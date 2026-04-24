@@ -145,6 +145,7 @@ export type Database = {
       notification_events: {
         Row: {
           attendance_record_id: string | null
+          class_id: string | null
           created_at: string
           delivery_status: Database["public"]["Enums"]["notification_delivery_status"]
           id: string
@@ -154,14 +155,17 @@ export type Database = {
           provider_message_id: string | null
           provider_response: Json
           recipient_phone: string
+          report_date: string | null
           result_upload_id: string | null
           send_mode: Database["public"]["Enums"]["notification_send_mode"]
           sent_at: string | null
           student_id: string | null
+          summary: Json
           updated_at: string
         }
         Insert: {
           attendance_record_id?: string | null
+          class_id?: string | null
           created_at?: string
           delivery_status?: Database["public"]["Enums"]["notification_delivery_status"]
           id?: string
@@ -171,14 +175,17 @@ export type Database = {
           provider_message_id?: string | null
           provider_response?: Json
           recipient_phone: string
+          report_date?: string | null
           result_upload_id?: string | null
           send_mode?: Database["public"]["Enums"]["notification_send_mode"]
           sent_at?: string | null
           student_id?: string | null
+          summary?: Json
           updated_at?: string
         }
         Update: {
           attendance_record_id?: string | null
+          class_id?: string | null
           created_at?: string
           delivery_status?: Database["public"]["Enums"]["notification_delivery_status"]
           id?: string
@@ -188,10 +195,12 @@ export type Database = {
           provider_message_id?: string | null
           provider_response?: Json
           recipient_phone?: string
+          report_date?: string | null
           result_upload_id?: string | null
           send_mode?: Database["public"]["Enums"]["notification_send_mode"]
           sent_at?: string | null
           student_id?: string | null
+          summary?: Json
           updated_at?: string
         }
         Relationships: [
@@ -200,6 +209,20 @@ export type Database = {
             columns: ["attendance_record_id"]
             isOneToOne: false
             referencedRelation: "attendance_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_events_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_analytics"
+            referencedColumns: ["class_id"]
+          },
+          {
+            foreignKeyName: "notification_events_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "school_classes"
             referencedColumns: ["id"]
           },
           {
@@ -224,6 +247,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          id: string
+          is_active: boolean
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          is_active?: boolean
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          is_active?: boolean
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       result_uploads: {
         Row: {
@@ -445,7 +498,7 @@ export type Database = {
       message_language: "english" | "hindi"
       notification_delivery_status: "pending" | "sent" | "failed" | "skipped"
       notification_send_mode: "auto" | "manual"
-      notification_type: "attendance" | "result"
+      notification_type: "attendance" | "result" | "daily_report"
       result_file_type: "pdf"
     }
     CompositeTypes: {
@@ -581,7 +634,7 @@ export const Constants = {
       message_language: ["english", "hindi"],
       notification_delivery_status: ["pending", "sent", "failed", "skipped"],
       notification_send_mode: ["auto", "manual"],
-      notification_type: ["attendance", "result"],
+      notification_type: ["attendance", "result", "daily_report"],
       result_file_type: ["pdf"],
     },
   },

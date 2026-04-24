@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -7,22 +8,31 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   GraduationCap,
+  LogIn,
+  LogOut,
   MessageCircle,
   Phone,
   Send,
+  ShieldCheck,
+  Sparkles,
   Upload,
+  UserCog,
+  UserSquare2,
   Users,
 } from "lucide-react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
+import * as XLSX from "xlsx";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  buildDailyReportMessage,
   buildResultMessage,
   classOptions,
   formatPercent,
@@ -36,48 +46,61 @@ import {
   type MessageLanguage,
   type NotificationSendMode,
 } from "@/lib/attendance";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type SchoolClass = Database["public"]["Tables"]["school_classes"]["Row"];
 type Student = Database["public"]["Tables"]["students"]["Row"];
+type AttendanceRecord = Database["public"]["Tables"]["attendance_records"]["Row"];
 type AttendanceAnalytics = Database["public"]["Views"]["attendance_analytics"]["Row"];
 type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Row"];
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type StaffRole = Database["public"]["Enums"]["app_role"];
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
 };
 
-const StatCard = ({
-  title,
-  value,
-  hint,
-  icon: Icon,
-}: {
-  title: string;
-  value: string;
-  hint: string;
-  icon: typeof Users;
-}) => (
-  <Card className="border-border/70 bg-card/80 backdrop-blur-sm">
-    <CardContent className="flex items-start justify-between p-5">
-      <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-        <p className="text-3xl font-semibold text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground">{hint}</p>
-      </div>
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/70 text-accent-foreground shadow-[var(--shadow-soft)]">
-        <Icon className="h-5 w-5" />
-      </div>
-    </CardContent>
-  </Card>
-);
+type AuthMode = "sign_in" | "sign_up";
+type ActivePanel = "teacher" | "admin";
+
+type DailySummary = {
+  present: number;
+  absent: number;
+  leave: number;
+  holiday: number;
+  total: number;
+};
+
+type StudentImportRow = {
+  full_name: string;
+  roll_number: string;
+  parent_name: string;
+  parent_phone: string;
+  whatsapp_phone: string;
+  class_name: string;
+  preferred_language: MessageLanguage;
+  admission_number: string;
+  notes: string;
+};
+
+type AttendanceImportRow = {
+  full_name: string;
+  roll_number: string;
+  status: AttendanceStatus;
+  attendance_date: string;
+  notes: string;
+};
+
+const MotionCard = motion(Card);
 
 const toneStyles: Record<string, string> = {
   success: "border-success/30 bg-success-soft text-success",
@@ -86,36 +109,284 @@ const toneStyles: Record<string, string> = {
   muted: "border-border/80 bg-muted text-muted-foreground",
 };
 
+const roleLabels: Record<StaffRole, string> = {
+  admin: "Admin",
+  moderator: "Teacher",
+  user: "Staff",
+};
+
+const statCards = [
+  { key: "students", title: "Students in class", hint: "Live class roster count", icon: Users },
+  { key: "attendance", title: "Average attendance", hint: "Across filtered students", icon: CheckCircle2 },
+  { key: "risk", title: "Below 75%", hint: "Needs attention", icon: AlertCircle },
+  { key: "messages", title: "Messages logged", hint: "Parent and staff queues", icon: Send },
+] as const;
+
+const normalizeHeader = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const normalizePhone = (value: unknown) => String(value ?? "").replace(/[^0-9+]/g, "").trim();
+
+const toMessageLanguage = (value: unknown): MessageLanguage => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw === "hindi" ? "hindi" : "english";
+};
+
+const toAttendanceStatus = (value: unknown): AttendanceStatus => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return attendanceStatuses.includes(raw as AttendanceStatus) ? (raw as AttendanceStatus) : "present";
+};
+
+const formatDateInput = (value: unknown, fallback: string) => {
+  if (!value) return fallback;
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) {
+      return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+    }
+  }
+
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString().slice(0, 10);
+};
+
+const deriveDailySummary = (rows: AttendanceRecord[]): DailySummary =>
+  rows.reduce(
+    (acc, row) => {
+      acc[row.status] += 1;
+      acc.total += 1;
+      return acc;
+    },
+    { present: 0, absent: 0, leave: 0, holiday: 0, total: 0 },
+  );
+
+const parseWorkbookRows = async (file: File) => {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheetName = workbook.SheetNames[0] ?? "Sheet1";
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: "" });
+  return { rows, sheetName };
+};
+
+const mapStudentRows = (rows: Record<string, unknown>[], selectedClassName: string): StudentImportRow[] =>
+  rows
+    .map((row) => {
+      const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+      return {
+        full_name: String(normalized.full_name || normalized.student_name || normalized.name || "").trim(),
+        roll_number: String(normalized.roll_number || normalized.roll || "").trim(),
+        parent_name: String(normalized.parent_name || normalized.guardian_name || "").trim(),
+        parent_phone: normalizePhone(normalized.parent_phone || normalized.phone || normalized.guardian_phone),
+        whatsapp_phone: normalizePhone(normalized.whatsapp_phone || normalized.parent_whatsapp || normalized.parent_phone || normalized.phone),
+        class_name: String(normalized.class_name || normalized.class || selectedClassName).trim() || selectedClassName,
+        preferred_language: toMessageLanguage(normalized.preferred_language || normalized.language),
+        admission_number: String(normalized.admission_number || normalized.admission_no || "").trim(),
+        notes: String(normalized.notes || "").trim(),
+      };
+    })
+    .filter((row) => row.full_name && row.roll_number && row.parent_phone);
+
+const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string): AttendanceImportRow[] =>
+  rows
+    .map((row) => {
+      const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+      return {
+        full_name: String(normalized.full_name || normalized.student_name || normalized.name || "").trim(),
+        roll_number: String(normalized.roll_number || normalized.roll || "").trim(),
+        status: toAttendanceStatus(normalized.status || normalized.attendance_status),
+        attendance_date: formatDateInput(normalized.attendance_date || normalized.date, fallbackDate),
+        notes: String(normalized.notes || "").trim(),
+      };
+    })
+    .filter((row) => row.full_name && row.roll_number);
+
+const StatCard = ({ title, value, hint, icon: Icon }: { title: string; value: string; hint: string; icon: typeof Users }) => (
+  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+    <Card className="border-border/70 bg-card/85 shadow-[var(--shadow-soft)] backdrop-blur-sm">
+      <CardContent className="flex items-start justify-between p-5">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
+          <p className="text-3xl font-semibold text-foreground">{value}</p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
+        </div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/80 text-accent-foreground shadow-[var(--shadow-soft)]">
+          <Icon className="h-5 w-5" />
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
+);
+
 export const AttendanceDashboard = () => {
   const { toast } = useToast();
+  const studentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const attendanceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const resultFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<AuthMode>("sign_in");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authFullName, setAuthFullName] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [roles, setRoles] = useState<StaffRole[]>([]);
+  const [activePanel, setActivePanel] = useState<ActivePanel>("teacher");
+
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<StudentWithAnalytics[]>([]);
   const [analytics, setAnalytics] = useState<AttendanceAnalytics[]>([]);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [imports, setImports] = useState<ExcelImport[]>([]);
   const [results, setResults] = useState<ResultUpload[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dailyRecords, setDailyRecords] = useState<AttendanceRecord[]>([]);
+
+  const [loading, setLoading] = useState(false);
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState<(typeof classOptions)[number]>("9");
-  const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayDate());
   const [search, setSearch] = useState("");
   const [sendMode, setSendMode] = useState<NotificationSendMode>("auto");
   const [messageLanguage, setMessageLanguage] = useState<MessageLanguage>("english");
   const [sheetLink, setSheetLink] = useState("");
   const [examName, setExamName] = useState("Terminal Exam");
-  const [importingFile, setImportingFile] = useState(false);
-  const [uploadingResult, setUploadingResult] = useState(false);
-  const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [staffReportPhone, setStaffReportPhone] = useState("");
 
+  const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
+  const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
+  const [lastImportSheetName, setLastImportSheetName] = useState("");
+
+  const [importingStudentFile, setImportingStudentFile] = useState(false);
+  const [importingAttendanceFile, setImportingAttendanceFile] = useState(false);
+  const [uploadingResult, setUploadingResult] = useState(false);
+  const [sendingDailyReport, setSendingDailyReport] = useState(false);
+
+  const isAdmin = roles.includes("admin");
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? classes.find((item) => item.class_name === selectedClassName),
     [classes, selectedClassId, selectedClassName],
   );
 
+  const classLabel = useMemo(
+    () => `Class ${selectedClass?.class_name ?? selectedClassName}${selectedClass?.section ? `-${selectedClass.section}` : ""}`,
+    [selectedClass, selectedClassName],
+  );
+
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((student) => {
+        const inClass = selectedClassId ? student.class_id === selectedClassId : true;
+        const matches = `${student.full_name} ${student.roll_number} ${student.parent_name ?? ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase());
+        return inClass && matches;
+      }),
+    [search, selectedClassId, students],
+  );
+
+  const riskStudents = useMemo(
+    () => analytics.filter((item) => item.class_id === selectedClassId && item.below_75_percent),
+    [analytics, selectedClassId],
+  );
+
+  const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
+
+  const overview = useMemo(() => {
+    const avgAttendance = filteredStudents.length
+      ? filteredStudents.reduce((sum, student) => sum + (student.analytics?.attendance_percentage ?? 0), 0) / filteredStudents.length
+      : 0;
+    return {
+      students: String(filteredStudents.length),
+      attendance: formatPercent(avgAttendance),
+      risk: String(riskStudents.length),
+      messages: String(notifications.filter((item) => item.delivery_status === "sent").length),
+    };
+  }, [filteredStudents, notifications, riskStudents]);
+
+  const fetchDailyRecords = async (classId: string, date: string) => {
+    const { data, error } = await supabase.from("attendance_records").select("*").eq("class_id", classId).eq("attendance_date", date);
+    if (!error) {
+      setDailyRecords(data ?? []);
+    }
+  };
+
+  const loadDashboard = async (userId: string) => {
+    setLoading(true);
+    const [profileRes, rolesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes] = await Promise.all([
+      supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.from("school_classes").select("*").order("class_name"),
+      supabase.from("students").select("*").order("roll_number"),
+      supabase.from("attendance_analytics").select("*"),
+      supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
+    ]);
+
+    const errors = [profileRes.error, rolesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error].filter(Boolean);
+    if (errors.length) {
+      toast({ title: "Could not load dashboard", description: errors[0]?.message ?? "Please try again.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    const analyticsMap = new Map((analyticsRes.data ?? []).map((row) => [row.student_id, row]));
+    setProfile(profileRes.data ?? null);
+    setRoles((rolesRes.data ?? []).map((item) => item.role));
+    setClasses(classesRes.data ?? []);
+    setStudents((studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null })));
+    setAnalytics(analyticsRes.data ?? []);
+    setNotifications(notificationsRes.data ?? []);
+    setImports(importsRes.data ?? []);
+    setResults(resultsRes.data ?? []);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    void loadDashboard();
+    const init = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setCurrentUserId(session?.user?.id ?? null);
+      setSessionLoading(false);
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
+      setSessionLoading(false);
+    });
+
+    void init();
+    return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setProfile(null);
+      setRoles([]);
+      setClasses([]);
+      setStudents([]);
+      setAnalytics([]);
+      setNotifications([]);
+      setImports([]);
+      setResults([]);
+      setDailyRecords([]);
+      return;
+    }
+
+    void loadDashboard(currentUserId);
+  }, [currentUserId]);
 
   useEffect(() => {
     const matchingClass = classes.find((item) => item.class_name === selectedClassName);
@@ -126,87 +397,78 @@ export const AttendanceDashboard = () => {
 
   useEffect(() => {
     if (!selectedClassId) return;
+    void fetchDailyRecords(selectedClassId, selectedDate);
+  }, [selectedClassId, selectedDate]);
 
-    const relevantStudents = students.filter((student) => student.class_id === selectedClassId);
-    setAttendanceDrafts((current) => {
-      const next = { ...current };
-      for (const student of relevantStudents) {
-        if (!next[student.id]) {
-          next[student.id] = "present";
-        }
-      }
-      return next;
-    });
+  useEffect(() => {
+    if (!selectedClassId) return;
+    const nextDrafts: Record<string, AttendanceStatus> = {};
+    students
+      .filter((student) => student.class_id === selectedClassId)
+      .forEach((student) => {
+        nextDrafts[student.id] = attendanceDrafts[student.id] ?? "present";
+      });
+    setAttendanceDrafts((current) => ({ ...current, ...nextDrafts }));
   }, [selectedClassId, students]);
 
-  const loadDashboard = async () => {
-    setLoading(true);
-
-    const [classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes] = await Promise.all([
-      supabase.from("school_classes").select("*").order("class_name"),
-      supabase.from("students").select("*").order("roll_number"),
-      supabase.from("attendance_analytics").select("*"),
-      supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(8),
-      supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(8),
-      supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(8),
-    ]);
-
-    const errors = [classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error].filter(Boolean);
-
-    if (errors.length) {
-      toast({
-        title: "Backend setup is waiting for sign-in",
-        description: "Create a staff login first to start using attendance data and uploads.",
-        variant: "destructive",
-      });
-      setLoading(false);
-      return;
+  useEffect(() => {
+    if (!isAdmin) {
+      setActivePanel("teacher");
     }
+  }, [isAdmin]);
 
-    const analyticsMap = new Map((analyticsRes.data ?? []).map((row) => [row.student_id, row]));
-    const studentRows = (studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null }));
-
-    setClasses(classesRes.data ?? []);
-    setStudents(studentRows);
-    setAnalytics(analyticsRes.data ?? []);
-    setNotifications(notificationsRes.data ?? []);
-    setImports(importsRes.data ?? []);
-    setResults(resultsRes.data ?? []);
-    setLoading(false);
+  const refreshAll = async () => {
+    if (!currentUserId) return;
+    await loadDashboard(currentUserId);
+    if (selectedClassId) {
+      await fetchDailyRecords(selectedClassId, selectedDate);
+    }
   };
 
-  const filteredStudents = useMemo(() => {
-    return students.filter((student) => {
-      const classMatch = selectedClassId ? student.class_id === selectedClassId : true;
-      const textMatch = `${student.full_name} ${student.roll_number} ${student.parent_name ?? ""}`
-        .toLowerCase()
-        .includes(search.toLowerCase());
-      return classMatch && textMatch;
-    });
-  }, [search, selectedClassId, students]);
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmittingAuth(true);
 
-  const riskStudents = useMemo(() => {
-    return analytics
-      .filter((item) => item.class_id === selectedClassId && item.below_75_percent)
-      .sort((a, b) => (a.attendance_percentage ?? 0) - (b.attendance_percentage ?? 0));
-  }, [analytics, selectedClassId]);
+    try {
+      if (authMode === "sign_up") {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              full_name: authFullName,
+              phone: authPhone,
+            },
+          },
+        });
+        if (error) throw error;
+        toast({ title: "Staff account created", description: "Please verify the email address before signing in." });
+        setAuthMode("sign_in");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        if (error) throw error;
+        toast({ title: "Signed in", description: "Welcome back." });
+      }
+    } catch (error) {
+      toast({
+        title: authMode === "sign_up" ? "Could not create account" : "Could not sign in",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
 
-  const summary = useMemo(() => {
-    const total = filteredStudents.length;
-    const atRisk = riskStudents.length;
-    const sentCount = notifications.filter((item) => item.delivery_status === "sent").length;
-    const avgAttendance = filteredStudents.length
-      ? filteredStudents.reduce((acc, student) => acc + (student.analytics?.attendance_percentage ?? 0), 0) / filteredStudents.length
-      : 0;
-
-    return { total, atRisk, sentCount, avgAttendance };
-  }, [filteredStudents, notifications, riskStudents]);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast({ title: "Signed out", description: "Staff session closed." });
+  };
 
   const markAttendance = async (student: StudentWithAnalytics) => {
     if (!selectedClassId) return;
-
     const status = attendanceDrafts[student.id] ?? "present";
-    const classLabel = `Class ${selectedClass?.class_name ?? ""}${selectedClass?.section ? `-${selectedClass.section}` : ""}`;
     const message = buildAttendanceMessage({
       studentName: student.full_name,
       parentName: student.parent_name,
@@ -217,7 +479,6 @@ export const AttendanceDashboard = () => {
     });
 
     setSavingStudentId(student.id);
-
     const { data: record, error: attendanceError } = await supabase
       .from("attendance_records")
       .upsert(
@@ -234,396 +495,829 @@ export const AttendanceDashboard = () => {
       .single();
 
     if (attendanceError || !record) {
-      toast({
-        title: "Attendance not saved",
-        description: attendanceError?.message ?? "Try again after signing in as staff.",
-        variant: "destructive",
-      });
+      toast({ title: "Attendance not saved", description: attendanceError?.message ?? "Please try again.", variant: "destructive" });
       setSavingStudentId(null);
       return;
     }
 
-    const statusForNotification = sendMode === "auto" ? "sent" : "pending";
-    const providerResponse =
-      sendMode === "auto"
-        ? { mode: "demo", note: "Twilio/WhatsApp connector not linked yet" }
-        : { mode: "manual_review" };
-
     const { error: notificationError } = await supabase.from("notification_events").insert({
       student_id: student.id,
       attendance_record_id: record.id,
+      class_id: selectedClassId,
+      report_date: selectedDate,
       notification_type: "attendance",
       send_mode: sendMode,
       message_language: messageLanguage,
       recipient_phone: student.whatsapp_phone || student.parent_phone,
       message_body: message,
-      delivery_status: statusForNotification,
+      delivery_status: sendMode === "auto" ? "sent" : "pending",
       sent_at: sendMode === "auto" ? new Date().toISOString() : null,
-      provider_response: providerResponse,
+      provider_response: sendMode === "auto" ? { mode: "demo" } : { mode: "manual_review" },
+      summary: {},
     });
 
     if (notificationError) {
-      toast({
-        title: "Attendance saved, message queue failed",
-        description: notificationError.message,
-        variant: "destructive",
-      });
+      toast({ title: "Saved attendance, but queue failed", description: notificationError.message, variant: "destructive" });
     } else {
-      toast({
-        title: `${attendanceLabels[status]} marked for ${student.full_name}`,
-        description: sendMode === "auto" ? "Parent notification added to auto-send queue." : "Parent message saved for review.",
-      });
+      toast({ title: `${attendanceLabels[status]} marked`, description: `${student.full_name} updated successfully.` });
     }
 
-    await loadDashboard();
+    await refreshAll();
     setSavingStudentId(null);
   };
 
-  const handleImportUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !selectedClassId) return;
-
-    setImportingFile(true);
-    const ext = file.name.split(".").pop() ?? "xlsx";
+  const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
+    if (!selectedClassId) return;
     const path = `${selectedClassId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
 
     const { error: uploadError } = await supabase.storage.from("attendance-imports").upload(path, file, {
       cacheControl: "3600",
       upsert: false,
-      contentType: file.type || `application/${ext}`,
+      contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
 
-    if (uploadError) {
-      toast({ title: "Import upload failed", description: uploadError.message, variant: "destructive" });
-      setImportingFile(false);
-      return;
-    }
+    if (uploadError) throw uploadError;
 
-    const { error: dbError } = await supabase.from("excel_imports").insert({
+    const { error: importError } = await supabase.from("excel_imports").insert({
       class_id: selectedClassId,
-      source_name: file.name,
+      source_name: sourceName,
       source_type: "excel_upload",
       storage_path: path,
+      worksheet_name: lastImportSheetName || null,
       status: "completed",
-      rows_imported: 0,
-      summary: { note: "File uploaded. Parser/backend sync can be added next." },
+      rows_imported: rowsImported,
+      summary,
     });
 
-    if (dbError) {
-      toast({ title: "Import logged with error", description: dbError.message, variant: "destructive" });
-    } else {
-      toast({ title: "Excel uploaded", description: "The file is stored and ready for import processing." });
-      await loadDashboard();
-    }
+    if (importError) throw importError;
+  };
 
-    event.target.value = "";
-    setImportingFile(false);
+  const handleStudentExcelUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedClassId || !selectedClass) return;
+
+    setImportingStudentFile(true);
+    try {
+      const { rows, sheetName } = await parseWorkbookRows(file);
+      setLastImportSheetName(sheetName);
+      const parsedRows = mapStudentRows(rows, selectedClass.class_name);
+      setStudentImportPreview(parsedRows.slice(0, 6));
+
+      const existingStudents = students.filter((student) => student.class_id === selectedClassId);
+      const byRoll = new Map(existingStudents.map((student) => [student.roll_number.toLowerCase(), student]));
+
+      for (const row of parsedRows) {
+        const existing = byRoll.get(row.roll_number.toLowerCase());
+        const payload = {
+          class_id: selectedClassId,
+          full_name: row.full_name,
+          roll_number: row.roll_number,
+          parent_name: row.parent_name || null,
+          parent_phone: row.parent_phone,
+          whatsapp_phone: row.whatsapp_phone || row.parent_phone,
+          preferred_language: row.preferred_language,
+          admission_number: row.admission_number || null,
+          notes: row.notes || null,
+          is_active: true,
+        };
+
+        if (existing) {
+          const { error } = await supabase.from("students").update(payload).eq("id", existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("students").insert(payload);
+          if (error) throw error;
+        }
+      }
+
+      await uploadImportFile(file, `${file.name} · Student master`, { type: "student_master", sheetName, parsedRows: parsedRows.length }, parsedRows.length);
+      toast({ title: "Student data imported", description: `${parsedRows.length} student rows processed from Excel.` });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Student import failed", description: error instanceof Error ? error.message : "Please check the sheet format.", variant: "destructive" });
+    } finally {
+      event.target.value = "";
+      setImportingStudentFile(false);
+    }
+  };
+
+  const handleAttendanceExcelUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedClassId) return;
+
+    setImportingAttendanceFile(true);
+    try {
+      const { rows, sheetName } = await parseWorkbookRows(file);
+      setLastImportSheetName(sheetName);
+      const parsedRows = mapAttendanceRows(rows, selectedDate);
+      setAttendanceImportPreview(parsedRows.slice(0, 6));
+
+      const roster = students.filter((student) => student.class_id === selectedClassId);
+      const matchByRoll = new Map(roster.map((student) => [student.roll_number.toLowerCase(), student]));
+
+      for (const row of parsedRows) {
+        const student = matchByRoll.get(row.roll_number.toLowerCase());
+        if (!student) continue;
+
+        const { error } = await supabase.from("attendance_records").upsert(
+          {
+            student_id: student.id,
+            class_id: selectedClassId,
+            attendance_date: row.attendance_date,
+            status: row.status,
+            notes: row.notes || null,
+          },
+          { onConflict: "student_id,attendance_date" },
+        );
+
+        if (error) throw error;
+      }
+
+      await uploadImportFile(file, `${file.name} · Attendance`, { type: "attendance", sheetName, parsedRows: parsedRows.length }, parsedRows.length);
+      toast({ title: "Attendance imported", description: `${parsedRows.length} attendance rows synced from Excel.` });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Attendance import failed", description: error instanceof Error ? error.message : "Please check the sheet format.", variant: "destructive" });
+    } finally {
+      event.target.value = "";
+      setImportingAttendanceFile(false);
+    }
   };
 
   const handleGoogleSheetLink = async () => {
     if (!sheetLink.trim() || !selectedClassId) return;
-
     const { error } = await supabase.from("excel_imports").insert({
       class_id: selectedClassId,
       source_name: sheetLink,
       source_type: "google_sheet",
       spreadsheet_id: sheetLink,
       status: "pending",
-      summary: { note: "Sheet link saved. Live sync connector can be linked next." },
+      summary: { note: "Sheet link saved for future live sync." },
     });
 
     if (error) {
-      toast({ title: "Sheet link not saved", description: error.message, variant: "destructive" });
+      toast({ title: "Could not save Google Sheet", description: error.message, variant: "destructive" });
       return;
     }
 
-    toast({ title: "Google Sheet link saved", description: "Connector-based sync can be added in the next step." });
     setSheetLink("");
-    await loadDashboard();
+    toast({ title: "Google Sheet saved", description: "The link is now stored in the backend." });
+    await refreshAll();
   };
 
-  const handleResultUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResultUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !selectedClassId) return;
 
     setUploadingResult(true);
-    const path = `${selectedClassId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
+    try {
+      const path = `${selectedClassId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
+      const { error: uploadError } = await supabase.storage.from("student-results").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || "application/pdf",
+      });
+      if (uploadError) throw uploadError;
 
-    const { error: uploadError } = await supabase.storage.from("student-results").upload(path, file, {
-      cacheControl: "3600",
-      upsert: false,
-      contentType: file.type || "application/pdf",
-    });
+      const classStudents = students.filter((student) => student.class_id === selectedClassId);
+      const payload = classStudents.map((student) => ({
+        class_id: selectedClassId,
+        student_id: student.id,
+        exam_name: examName,
+        storage_path: path,
+        send_to_parent: true,
+      }));
 
-    if (uploadError) {
-      toast({ title: "Result upload failed", description: uploadError.message, variant: "destructive" });
-      setUploadingResult(false);
-      return;
-    }
+      const { data, error: resultError } = await supabase.from("result_uploads").insert(payload).select();
+      if (resultError) throw resultError;
 
-    const classStudents = students.filter((student) => student.class_id === selectedClassId);
-    const resultRows = classStudents.map((student) => ({
-      class_id: selectedClassId,
-      student_id: student.id,
-      exam_name: examName,
-      storage_path: path,
-      send_to_parent: true,
-    }));
+      if (data?.length) {
+        const notificationPayload = data
+          .map((result) => {
+            const student = classStudents.find((item) => item.id === result.student_id);
+            if (!student) return null;
+            return {
+              student_id: student.id,
+              result_upload_id: result.id,
+              class_id: selectedClassId,
+              report_date: selectedDate,
+              notification_type: "result" as const,
+              send_mode: sendMode,
+              message_language: messageLanguage,
+              recipient_phone: student.whatsapp_phone || student.parent_phone,
+              message_body: buildResultMessage({
+                studentName: student.full_name,
+                parentName: student.parent_name,
+                examName,
+                classLabel,
+                language: messageLanguage,
+              }),
+              delivery_status: sendMode === "auto" ? ("sent" as const) : ("pending" as const),
+              sent_at: sendMode === "auto" ? new Date().toISOString() : null,
+              provider_response: sendMode === "auto" ? ({ mode: "demo" } as Json) : ({ mode: "manual_review" } as Json),
+              summary: {},
+            };
+          })
+          .filter(Boolean);
 
-    const { data: insertedResults, error: insertError } = await supabase.from("result_uploads").insert(resultRows).select();
-
-    if (insertError) {
-      toast({ title: "Result metadata failed", description: insertError.message, variant: "destructive" });
-      setUploadingResult(false);
-      return;
-    }
-
-    if (insertedResults?.length) {
-      const notificationsPayload = insertedResults.map((row) => {
-        const student = classStudents.find((entry) => entry.id === row.student_id);
-        return {
-          student_id: row.student_id,
-          result_upload_id: row.id,
-          notification_type: "result" as const,
-          send_mode: sendMode,
-          message_language: messageLanguage,
-          recipient_phone: student?.whatsapp_phone || student?.parent_phone || "",
-          message_body: buildResultMessage({
-            studentName: student?.full_name ?? "Student",
-            parentName: student?.parent_name,
-            examName,
-            classLabel: `Class ${selectedClass?.class_name ?? ""}${selectedClass?.section ? `-${selectedClass.section}` : ""}`,
-            language: messageLanguage,
-          }),
-          delivery_status: sendMode === "auto" ? ("sent" as const) : ("pending" as const),
-          sent_at: sendMode === "auto" ? new Date().toISOString() : null,
-          provider_response: sendMode === "auto" ? { mode: "demo", note: "Connector required for live WhatsApp" } : { mode: "manual_review" },
-        };
-      }).filter((item) => item.recipient_phone);
-
-      if (notificationsPayload.length) {
-        await supabase.from("notification_events").insert(notificationsPayload);
+        if (notificationPayload.length) {
+          const { error: notificationError } = await supabase.from("notification_events").insert(notificationPayload as Database["public"]["Tables"]["notification_events"]["Insert"][]);
+          if (notificationError) throw notificationError;
+        }
       }
+
+      toast({ title: "Results uploaded", description: "PDF stored and parent notifications prepared." });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Result upload failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      event.target.value = "";
+      setUploadingResult(false);
+    }
+  };
+
+  const handleDailyReportSend = async () => {
+    if (!selectedClassId) return;
+    const recipient = staffReportPhone.trim() || profile?.phone || "";
+    if (!recipient) {
+      toast({ title: "Staff WhatsApp number required", description: "Add a staff phone number before sending the daily report.", variant: "destructive" });
+      return;
     }
 
-    toast({ title: "Results uploaded", description: "Result PDFs were stored and parent notifications were prepared." });
-    event.target.value = "";
-    setUploadingResult(false);
-    await loadDashboard();
+    setSendingDailyReport(true);
+    try {
+      const message = buildDailyReportMessage({
+        classLabel,
+        date: format(new Date(selectedDate), "dd MMM yyyy"),
+        present: dailySummary.present,
+        absent: dailySummary.absent,
+        leave: dailySummary.leave,
+        holiday: dailySummary.holiday,
+        total: dailySummary.total,
+        language: messageLanguage,
+      });
+
+      const { error } = await supabase.from("notification_events").insert({
+        class_id: selectedClassId,
+        report_date: selectedDate,
+        notification_type: "daily_report",
+        send_mode: sendMode,
+        message_language: messageLanguage,
+        recipient_phone: recipient,
+        message_body: message,
+        delivery_status: sendMode === "auto" ? "sent" : "pending",
+        sent_at: sendMode === "auto" ? new Date().toISOString() : null,
+        provider_response: sendMode === "auto" ? { mode: "demo", channel: "staff_whatsapp" } : { mode: "manual_review" },
+        summary: dailySummary,
+      });
+
+      if (error) throw error;
+      toast({ title: "Daily report prepared", description: "Staff summary has been added to the message queue." });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Daily report failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSendingDailyReport(false);
+    }
   };
+
+  if (sessionLoading) {
+    return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
+  }
+
+  if (!currentUserId) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+        <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.26),transparent_30%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.22),transparent_28%)]" />
+        <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
+          <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+            <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
+              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">Attendance Automation</Badge>
+              <div className="space-y-4">
+                <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">Teacher and admin control for attendance, Excel import, reports, and parent messaging.</h1>
+                <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
+                  Built for Classes 9 to 12 with secure staff login, daily present/absent summaries, result uploads, and automatic shortage analytics below 75%.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ["Excel-ready", "Student master + attendance import"],
+                  ["Panel control", "Teacher and admin by role"],
+                  ["Daily summary", "Staff WhatsApp queue + dashboard totals"],
+                ].map(([title, note], index) => (
+                  <motion.div key={title} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 + 0.15 }} className="rounded-2xl border border-border/70 bg-background/65 p-4 shadow-[var(--shadow-soft)] backdrop-blur-sm">
+                    <p className="text-sm font-semibold text-foreground">{title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{note}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+
+            <MotionCard initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="border-border/70 bg-panel/90 shadow-[var(--shadow-elevated)]">
+              <CardHeader>
+                <CardTitle className="font-display text-3xl">{authMode === "sign_in" ? "Staff login" : "Create staff account"}</CardTitle>
+                <CardDescription>Email/password access for teachers and admins.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="space-y-4" onSubmit={handleAuthSubmit}>
+                  {authMode === "sign_up" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="fullName">Full name</Label>
+                        <Input id="fullName" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} className="bg-background/70" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">Phone / WhatsApp</Label>
+                        <Input id="phone" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} className="bg-background/70" />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="bg-background/70" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input id="password" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="bg-background/70" required minLength={6} />
+                  </div>
+                  <Button type="submit" size="lg" className="w-full">
+                    <LogIn className="h-4 w-4" />
+                    {isSubmittingAuth ? "Please wait..." : authMode === "sign_in" ? "Sign in" : "Create account"}
+                  </Button>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => setAuthMode((mode) => (mode === "sign_in" ? "sign_up" : "sign_in"))}>
+                    {authMode === "sign_in" ? "Need a staff account?" : "Already have an account?"}
+                  </Button>
+                </form>
+              </CardContent>
+            </MotionCard>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.22),transparent_34%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.18),transparent_28%)]" />
+      <motion.div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.24),transparent_32%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.18),transparent_30%)]"
+        animate={{ opacity: [0.75, 1, 0.75] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+      />
 
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <section className="grid gap-4 lg:grid-cols-[1.25fr,0.75fr]">
-          <Card className="overflow-hidden border-border/60 bg-panel/90 shadow-[var(--shadow-elevated)]">
+        <section className="grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">
+          <MotionCard initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="overflow-hidden border-border/60 bg-panel/90 shadow-[var(--shadow-elevated)]">
             <CardHeader className="space-y-6 pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                     <GraduationCap className="h-3.5 w-3.5" />
-                    Attendance Automation Hub
+                    Attendance Command Center
                   </div>
                   <div className="space-y-2">
-                    <CardTitle className="max-w-2xl font-display text-4xl leading-tight text-foreground sm:text-5xl">
-                      Class-wise attendance, parent alerts, results, and shortage analytics.
-                    </CardTitle>
+                    <CardTitle className="max-w-3xl font-display text-4xl leading-tight sm:text-5xl">Beautiful attendance tracking with Excel import, results, daily reports, and login-based control.</CardTitle>
                     <CardDescription className="max-w-2xl text-base leading-7 text-muted-foreground">
-                      Built for Classes 9–12 with Excel uploads, Google Sheet links, WhatsApp-ready parent messaging, and instant below-75% attendance visibility.
+                      Signed in as {profile?.full_name || "Staff"} · {roles.map((role) => roleLabels[role]).join(", ") || "Teacher"}
                     </CardDescription>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-border/70 bg-background/70 p-3 shadow-[var(--shadow-soft)] backdrop-blur-sm">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Class</p>
-                      <Select value={selectedClassName} onValueChange={(value) => setSelectedClassName(value as (typeof classOptions)[number])}>
-                        <SelectTrigger className="border-border/70 bg-muted/60">
-                          <SelectValue placeholder="Select class" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {classOptions.map((className) => (
-                            <SelectItem key={className} value={className}>
-                              Class {className}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Date</p>
-                      <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="border-border/70 bg-muted/60" />
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Parent message</p>
-                      <Select value={sendMode} onValueChange={(value) => setSendMode(value as NotificationSendMode)}>
-                        <SelectTrigger className="border-border/70 bg-muted/60">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sendModeOptions.map((mode) => (
-                            <SelectItem key={mode} value={mode}>
-                              {sendModeLabels[mode]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Language</p>
-                      <Select value={messageLanguage} onValueChange={(value) => setMessageLanguage(value as MessageLanguage)}>
-                        <SelectTrigger className="border-border/70 bg-muted/60">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {languageOptions.map((language) => (
-                            <SelectItem key={language} value={language}>
-                              {languageLabels[language]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {isAdmin && (
+                    <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as ActivePanel)}>
+                      <TabsList className="rounded-2xl border border-border/70 bg-background/70 p-1.5">
+                        <TabsTrigger value="teacher" className="rounded-xl px-4 py-2"><UserSquare2 className="mr-2 h-4 w-4" />Teacher</TabsTrigger>
+                        <TabsTrigger value="admin" className="rounded-xl px-4 py-2"><ShieldCheck className="mr-2 h-4 w-4" />Admin</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  )}
+                  <Button variant="outline" onClick={() => void handleLogout()}>
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 shadow-[var(--shadow-soft)]">
-                  <CalendarDays className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Today</p>
-                    <p className="text-sm font-medium text-foreground">{format(new Date(selectedDate), "dd MMM yyyy")}</p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-border/70 bg-background/65 p-4 shadow-[var(--shadow-soft)]">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Class</p>
+                  <div className="mt-2">
+                    <Select value={selectedClassName} onValueChange={(value) => setSelectedClassName(value as (typeof classOptions)[number])}>
+                      <SelectTrigger className="border-border/70 bg-muted/60"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {classOptions.map((item) => (
+                          <SelectItem key={item} value={item}>Class {item}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 shadow-[var(--shadow-soft)]">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Messaging mode</p>
-                    <p className="text-sm font-medium text-foreground">{sendModeLabels[sendMode]}</p>
+                <div className="rounded-2xl border border-border/70 bg-background/65 p-4 shadow-[var(--shadow-soft)]">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Date</p>
+                  <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="mt-2 border-border/70 bg-muted/60" />
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/65 p-4 shadow-[var(--shadow-soft)]">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Message mode</p>
+                  <div className="mt-2">
+                    <Select value={sendMode} onValueChange={(value) => setSendMode(value as NotificationSendMode)}>
+                      <SelectTrigger className="border-border/70 bg-muted/60"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {sendModeOptions.map((item) => (
+                          <SelectItem key={item} value={item}>{sendModeLabels[item]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 shadow-[var(--shadow-soft)]">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Risk threshold</p>
-                    <p className="text-sm font-medium text-foreground">Below 75% attendance</p>
+                <div className="rounded-2xl border border-border/70 bg-background/65 p-4 shadow-[var(--shadow-soft)]">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Language</p>
+                  <div className="mt-2">
+                    <Select value={messageLanguage} onValueChange={(value) => setMessageLanguage(value as MessageLanguage)}>
+                      <SelectTrigger className="border-border/70 bg-muted/60"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {languageOptions.map((item) => (
+                          <SelectItem key={item} value={item}>{languageLabels[item]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
             </CardHeader>
-          </Card>
+          </MotionCard>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            <StatCard title="Students in class" value={String(summary.total)} hint="Filtered by selected class" icon={Users} />
-            <StatCard title="Average attendance" value={formatPercent(summary.avgAttendance)} hint="Across selected students" icon={CheckCircle2} />
-            <StatCard title="Below 75%" value={String(summary.atRisk)} hint="Needs parent/staff attention" icon={AlertCircle} />
-            <StatCard title="Messages logged" value={String(summary.sentCount)} hint="Auto/manual queues combined" icon={Send} />
+            {statCards.map(({ key, title, hint, icon }) => (
+              <StatCard key={key} title={title} hint={hint} icon={icon} value={overview[key]} />
+            ))}
           </div>
         </section>
 
-        <Tabs defaultValue="attendance" className="space-y-6">
-          <TabsList className="h-auto w-full justify-start gap-2 rounded-2xl border border-border/70 bg-panel/80 p-2">
-            <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-[var(--shadow-soft)]">Attendance</TabsTrigger>
-            <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-[var(--shadow-soft)]">Excel & Sheets</TabsTrigger>
-            <TabsTrigger value="results" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-[var(--shadow-soft)]">Results</TabsTrigger>
-            <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-[var(--shadow-soft)]">Analytics</TabsTrigger>
-          </TabsList>
+        <section className="grid gap-6 xl:grid-cols-[1.4fr,0.6fr]">
+          <div className="space-y-6">
+            <Tabs defaultValue="attendance" className="space-y-6">
+              <TabsList className="h-auto w-full justify-start gap-2 rounded-2xl border border-border/70 bg-panel/80 p-2">
+                <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5">Attendance</TabsTrigger>
+                <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5">Excel & Sheets</TabsTrigger>
+                <TabsTrigger value="results" className="rounded-xl px-4 py-2.5">Results</TabsTrigger>
+                <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5">Analytics</TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="attendance" className="grid gap-6 xl:grid-cols-[1.45fr,0.85fr]">
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <CardTitle className="font-display text-2xl">Mark attendance</CardTitle>
-                  <CardDescription>Switch between classes 9, 10, 11, and 12, then save status and parent notification in one flow.</CardDescription>
-                </div>
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by student, roll no, or parent"
-                  className="max-w-sm border-border/70 bg-background/75"
-                />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {loading ? (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Loading class roster…</div>
-                ) : filteredStudents.length ? (
-                  filteredStudents.map((student) => {
-                    const currentStatus = attendanceDrafts[student.id] ?? "present";
-                    const attendancePercent = student.analytics?.attendance_percentage ?? 0;
-                    return (
-                      <div
-                        key={student.id}
-                        className="group grid gap-4 rounded-2xl border border-border/70 bg-background/75 p-4 transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)] lg:grid-cols-[1.2fr,0.9fr,auto]"
-                      >
-                        <div className="space-y-2">
+              <TabsContent value="attendance" className="grid gap-6 xl:grid-cols-[1.35fr,0.95fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <CardTitle className="font-display text-2xl">Teacher panel</CardTitle>
+                      <CardDescription>Mark present, absent, leave, or holiday and queue the parent message in one step.</CardDescription>
+                    </div>
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {loading ? (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Loading roster…</div>
+                    ) : filteredStudents.length ? (
+                      filteredStudents.map((student, index) => {
+                        const currentStatus = attendanceDrafts[student.id] ?? "present";
+                        const attendancePercent = student.analytics?.attendance_percentage ?? 0;
+                        return (
+                          <motion.div
+                            key={student.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.03 }}
+                            className="grid gap-4 rounded-2xl border border-border/70 bg-background/75 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)] lg:grid-cols-[1.2fr,0.95fr,auto]"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-foreground">{student.full_name}</h3>
+                                  <p className="text-sm text-muted-foreground">Roll {student.roll_number} · {student.parent_name || "Parent pending"}</p>
+                                </div>
+                                <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
+                                  <Phone className="h-3.5 w-3.5" />
+                                  {student.whatsapp_phone || student.parent_phone}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Attendance strength</span>
+                                  <span className={cn("font-medium", attendancePercent < 75 ? "text-danger" : "text-success")}>{formatPercent(attendancePercent)}</span>
+                                </div>
+                                <Progress value={attendancePercent} className="h-2.5 bg-muted" />
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {attendanceStatuses.map((status) => (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  onClick={() => setAttendanceDrafts((current) => ({ ...current, [student.id]: status }))}
+                                  className={cn(
+                                    "rounded-2xl border px-4 py-3 text-left transition-all duration-300",
+                                    currentStatus === status
+                                      ? "border-primary bg-primary/12 text-foreground shadow-[var(--shadow-soft)]"
+                                      : "border-border/70 bg-muted/55 text-muted-foreground hover:border-primary/30 hover:bg-background/80",
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="font-medium">{attendanceLabels[status]}</span>
+                                    <span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", toneStyles[statusTone[status]])}>{status}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-end">
+                              <Button size="lg" onClick={() => void markAttendance(student)} disabled={savingStudentId === student.id}>
+                                <Send className="h-4 w-4" />
+                                {savingStudentId === student.id ? "Saving..." : "Save"}
+                              </Button>
+                            </div>
+                          </motion.div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No students found. Import an Excel sheet to populate this class.</div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Daily summary</CardTitle>
+                    <CardDescription>Instant class totals for present, absent, leave, and holiday.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ["Present", dailySummary.present, "success"],
+                        ["Absent", dailySummary.absent, "danger"],
+                        ["Leave", dailySummary.leave, "warning"],
+                        ["Holiday", dailySummary.holiday, "muted"],
+                      ].map(([label, value, tone]) => (
+                        <div key={label} className={cn("rounded-2xl border p-4", toneStyles[tone as string])}>
+                          <p className="text-xs uppercase tracking-[0.16em]">{label}</p>
+                          <p className="mt-2 text-2xl font-semibold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">Total students marked</p>
+                          <p className="text-sm text-muted-foreground">{classLabel} · {format(new Date(selectedDate), "dd MMM yyyy")}</p>
+                        </div>
+                        <span className="text-3xl font-semibold">{dailySummary.total}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <Label htmlFor="staffReportPhone">Staff WhatsApp number</Label>
+                      <Input id="staffReportPhone" value={staffReportPhone} onChange={(e) => setStaffReportPhone(e.target.value)} placeholder={profile?.phone || "+91..."} className="bg-background/80" />
+                      <Button className="w-full" onClick={() => void handleDailyReportSend()} disabled={sendingDailyReport || activePanel !== "admin"}>
+                        <MessageCircle className="h-4 w-4" />
+                        {sendingDailyReport ? "Preparing report..." : activePanel === "admin" ? "Send daily report to staff" : "Admin panel required"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="imports" className="grid gap-6 xl:grid-cols-[1fr,1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Student master Excel</CardTitle>
+                    <CardDescription>Upload student, parent, phone, roll number, language, and class data.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-primary/35 bg-primary/8 px-6 py-10 text-center transition-all duration-300 hover:border-primary/60 hover:bg-primary/12">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 shadow-[var(--shadow-soft)]"><FileSpreadsheet className="h-5 w-5 text-primary" /></div>
+                      <div className="space-y-1">
+                        <p className="text-base font-medium">Upload student Excel</p>
+                        <p className="text-sm text-muted-foreground">Recommended columns: full_name, roll_number, parent_name, parent_phone, whatsapp_phone, class_name</p>
+                      </div>
+                      <input ref={studentFileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => void handleStudentExcelUpload(e)} />
+                    </label>
+                    <p className="text-sm text-muted-foreground">{importingStudentFile ? "Reading and syncing student sheet..." : "This upload updates existing students by roll number and adds new ones."}</p>
+                    {studentImportPreview.length > 0 && (
+                      <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-sm font-medium">Preview from {lastImportSheetName}</p>
+                        {studentImportPreview.map((row) => (
+                          <div key={`${row.roll_number}-${row.full_name}`} className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                            <span>{row.full_name}</span>
+                            <span>Roll {row.roll_number}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Attendance Excel</CardTitle>
+                    <CardDescription>Upload a daily attendance sheet and sync statuses into the selected class.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-secondary/55 bg-secondary/30 px-6 py-10 text-center transition-all duration-300 hover:border-secondary hover:bg-secondary/40">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 shadow-[var(--shadow-soft)]"><Upload className="h-5 w-5 text-primary" /></div>
+                      <div className="space-y-1">
+                        <p className="text-base font-medium">Upload attendance Excel</p>
+                        <p className="text-sm text-muted-foreground">Recommended columns: full_name, roll_number, status, attendance_date, notes</p>
+                      </div>
+                      <input ref={attendanceFileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => void handleAttendanceExcelUpload(e)} />
+                    </label>
+                    <p className="text-sm text-muted-foreground">{importingAttendanceFile ? "Reading and syncing attendance sheet..." : "Imported rows update the daily register and the analytics refresh automatically."}</p>
+                    {attendanceImportPreview.length > 0 && (
+                      <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-sm font-medium">Attendance preview</p>
+                        {attendanceImportPreview.map((row) => (
+                          <div key={`${row.roll_number}-${row.attendance_date}`} className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                            <span>{row.full_name}</span>
+                            <span>{attendanceLabels[row.status]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Google Sheet link + import history</CardTitle>
+                    <CardDescription>Keep sheet references and review recent import activity.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-6 lg:grid-cols-[0.8fr,1.2fr]">
+                    <div className="space-y-3">
+                      <Input value={sheetLink} onChange={(e) => setSheetLink(e.target.value)} placeholder="Paste Google Sheet link" className="bg-background/75" />
+                      <Button onClick={() => void handleGoogleSheetLink()}>
+                        <ArrowUpRight className="h-4 w-4" />
+                        Save Google Sheet link
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {imports.length ? (
+                        imports.map((item) => (
+                          <div key={item.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-medium text-foreground">{item.source_type === "excel_upload" ? "Excel upload" : "Google Sheet"}</span>
+                              <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", item.status === "completed" ? toneStyles.success : toneStyles.warning)}>{item.status}</span>
+                            </div>
+                            <p className="mt-3 text-sm text-muted-foreground">{item.source_name}</p>
+                            <p className="mt-2 text-xs text-muted-foreground">Rows imported: {item.rows_imported}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground md:col-span-2">No import activity yet.</div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="results" className="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Upload result PDF</CardTitle>
+                    <CardDescription>Store the file once and prepare notification rows for all students in the class.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="examName">Exam name</Label>
+                      <Input id="examName" value={examName} onChange={(e) => setExamName(e.target.value)} className="border-border/70 bg-background/75" />
+                    </div>
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-secondary/55 bg-secondary/30 px-6 py-10 text-center transition-all duration-300 hover:border-secondary hover:bg-secondary/40">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 shadow-[var(--shadow-soft)]"><Upload className="h-5 w-5 text-primary" /></div>
+                      <div className="space-y-1">
+                        <p className="text-base font-medium">Upload result PDF</p>
+                        <p className="text-sm text-muted-foreground">One PDF can be linked to all students in the selected class.</p>
+                      </div>
+                      <input ref={resultFileInputRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => void handleResultUpload(e)} />
+                    </label>
+                    <p className="text-sm text-muted-foreground">{uploadingResult ? "Uploading result and preparing messages..." : "Result delivery is queued immediately using the selected message mode."}</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Result distribution log</CardTitle>
+                    <CardDescription>Review uploaded result files and prepared sends.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {results.length ? (
+                      results.map((result) => (
+                        <div key={result.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <h3 className="text-lg font-semibold text-foreground">{student.full_name}</h3>
-                              <p className="text-sm text-muted-foreground">Roll {student.roll_number} · {student.parent_name || "Parent name pending"}</p>
+                              <p className="text-sm font-medium text-foreground">{result.exam_name}</p>
+                              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Stored result record</p>
                             </div>
-                            <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
-                              <Phone className="h-3.5 w-3.5" />
-                              {student.whatsapp_phone || student.parent_phone}
+                            <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", result.send_to_parent ? toneStyles.success : toneStyles.muted)}>{result.send_to_parent ? "send ready" : "stored"}</span>
+                          </div>
+                          <p className="mt-3 text-sm text-muted-foreground">Stored file: {result.storage_path}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Result uploads will appear here.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Attendance risk monitor</CardTitle>
+                    <CardDescription>Students below 75% attendance are highlighted here for faster follow-up.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {riskStudents.length ? (
+                      riskStudents.map((student) => (
+                        <div key={student.student_id} className="rounded-2xl border border-danger/25 bg-danger-soft p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold text-danger">{student.full_name}</p>
+                              <p className="text-sm text-danger/80">Roll {student.roll_number} · Class {student.class_name}{student.section ? `-${student.section}` : ""}</p>
+                            </div>
+                            <span className="rounded-full border border-danger/25 bg-background/70 px-3 py-1 text-sm font-semibold text-danger">{formatPercent(student.attendance_percentage)}</span>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            <Progress value={student.attendance_percentage ?? 0} className="h-2.5 bg-background/70" />
+                            <div className="grid grid-cols-3 gap-2 text-xs text-danger/80">
+                              <span>Present: {student.present_days}</span>
+                              <span>Absent: {student.absent_days}</span>
+                              <span>Leave: {student.leave_days}</span>
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">Attendance strength</span>
-                              <span className={cn("font-medium", attendancePercent < 75 ? "text-danger" : "text-success")}>{formatPercent(attendancePercent)}</span>
-                            </div>
-                            <Progress value={attendancePercent} className="h-2.5 bg-muted" />
-                          </div>
                         </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No students are currently below the 75% threshold.</div>
+                    )}
+                  </CardContent>
+                </Card>
 
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {attendanceStatuses.map((status) => (
-                            <button
-                              key={status}
-                              type="button"
-                              onClick={() => setAttendanceDrafts((current) => ({ ...current, [student.id]: status }))}
-                              className={cn(
-                                "rounded-2xl border px-4 py-3 text-left transition-all duration-300",
-                                currentStatus === status
-                                  ? "border-primary bg-primary/12 text-foreground shadow-[var(--shadow-soft)]"
-                                  : "border-border/70 bg-muted/55 text-muted-foreground hover:border-primary/30 hover:bg-background/80",
-                              )}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="font-medium">{attendanceLabels[status]}</span>
-                                <span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", toneStyles[statusTone[status]])}>
-                                  {status}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="flex items-center justify-end">
-                          <Button size="lg" onClick={() => void markAttendance(student)} disabled={savingStudentId === student.id}>
-                            <Send className="h-4 w-4" />
-                            {savingStudentId === student.id ? "Saving..." : "Save"}
-                          </Button>
-                        </div>
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">{activePanel === "admin" ? "Admin panel" : "Teacher panel"}</CardTitle>
+                    <CardDescription>{activePanel === "admin" ? "Admin-only operational control and summary messaging." : "Teacher-focused workflow and live roster control."}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(activePanel === "admin"
+                      ? [
+                          "Admin login unlocks the extra control panel toggle.",
+                          "Daily report summary can be sent to staff WhatsApp from this panel.",
+                          "All recent imports, result uploads, and queue activity stay visible.",
+                          "Teacher accounts can still handle day-to-day attendance and result uploads.",
+                        ]
+                      : [
+                          "Teacher login is focused on quick attendance saving.",
+                          "Excel student data and attendance imports remain available.",
+                          "Result uploads keep parent communication ready.",
+                          "Shortage analytics remain visible for class follow-up.",
+                        ]).map((note) => (
+                      <div key={note} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">
+                        <div className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent/70 text-accent-foreground"><Sparkles className="h-3.5 w-3.5" /></div>
+                        <p>{note}</p>
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
-                    No students are available yet for this class. Upload Excel data or add students through the backend tables.
+                    ))}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <div className="space-y-6">
+            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+              <CardHeader>
+                <CardTitle className="font-display text-2xl">Staff identity</CardTitle>
+                <CardDescription>Access changes automatically based on the logged-in role.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-base font-semibold">{profile?.full_name || "Staff user"}</p>
+                      <p className="text-sm text-muted-foreground">{authEmail || "Logged in account"}</p>
+                    </div>
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/75 text-accent-foreground"><UserCog className="h-5 w-5" /></div>
                   </div>
-                )}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {roles.length ? roles.map((role) => <Badge key={role} variant="secondary">{roleLabels[role]}</Badge>) : <Badge variant="secondary">Teacher</Badge>}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">
+                  {isAdmin ? "This account can switch between teacher and admin panels." : "This account uses the teacher panel. The first registered account becomes admin automatically."}
+                </div>
               </CardContent>
             </Card>
 
             <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
               <CardHeader>
-                <CardTitle className="font-display text-2xl">Recent parent messages</CardTitle>
-                <CardDescription>Auto-send writes a sent demo event now; connect Twilio/WhatsApp later for live delivery.</CardDescription>
+                <CardTitle className="font-display text-2xl">Recent message queue</CardTitle>
+                <CardDescription>Parent and staff daily report messages appear here.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {notifications.length ? (
@@ -634,207 +1328,18 @@ export const AttendanceDashboard = () => {
                           <p className="text-sm font-medium text-foreground">{item.recipient_phone}</p>
                           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.notification_type} · {item.send_mode}</p>
                         </div>
-                        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", item.delivery_status === "sent" ? toneStyles.success : item.delivery_status === "pending" ? toneStyles.warning : toneStyles.muted)}>
-                          {item.delivery_status}
-                        </span>
+                        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", item.delivery_status === "sent" ? toneStyles.success : item.delivery_status === "pending" ? toneStyles.warning : toneStyles.muted)}>{item.delivery_status}</span>
                       </div>
                       <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.message_body}</p>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
-                    Message history will appear here after you save attendance or upload results.
-                  </div>
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Queued messages will appear after attendance, results, or daily reports are saved.</div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="imports" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Excel upload</CardTitle>
-                <CardDescription>Store the class sheet in the backend so it can be processed into the attendance roster.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-primary/35 bg-primary/8 px-6 py-10 text-center transition-all duration-300 hover:border-primary/60 hover:bg-primary/12">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 shadow-[var(--shadow-soft)]">
-                    <FileSpreadsheet className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-base font-medium text-foreground">Upload class Excel</p>
-                    <p className="text-sm text-muted-foreground">Supports .xlsx or .xls for roster/attendance imports</p>
-                  </div>
-                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(event) => void handleImportUpload(event)} />
-                </label>
-                <p className="text-sm text-muted-foreground">{importingFile ? "Uploading file…" : "The first version stores the file and logs the import task for processing."}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Google Sheet link</CardTitle>
-                <CardDescription>Save a sheet URL now; live sync can be connected next with the Sheets connector.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Input
-                  placeholder="Paste Google Sheet link"
-                  value={sheetLink}
-                  onChange={(event) => setSheetLink(event.target.value)}
-                  className="border-border/70 bg-background/75"
-                />
-                <Button onClick={() => void handleGoogleSheetLink()}>
-                  <ArrowUpRight className="h-4 w-4" />
-                  Save sheet link
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Import activity</CardTitle>
-                <CardDescription>Track uploaded Excel files and saved Google Sheet references by class.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {imports.length ? (
-                  imports.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-foreground">{item.source_type === "excel_upload" ? "Excel upload" : "Google Sheet"}</span>
-                        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", item.status === "completed" ? toneStyles.success : toneStyles.warning)}>
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-muted-foreground">{item.source_name}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">Rows imported: {item.rows_imported}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground xl:col-span-3">
-                    No import jobs yet.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="results" className="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Upload result PDF</CardTitle>
-                <CardDescription>Upload a class result sheet and prepare parent notifications instantly.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Exam name</p>
-                  <Input value={examName} onChange={(event) => setExamName(event.target.value)} className="border-border/70 bg-background/75" />
-                </div>
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-secondary/55 bg-secondary/30 px-6 py-10 text-center transition-all duration-300 hover:border-secondary hover:bg-secondary/40">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 shadow-[var(--shadow-soft)]">
-                    <Upload className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-base font-medium text-foreground">Upload result PDF</p>
-                    <p className="text-sm text-muted-foreground">One PDF can be linked to all students in the selected class.</p>
-                  </div>
-                  <input type="file" accept="application/pdf" className="hidden" onChange={(event) => void handleResultUpload(event)} />
-                </label>
-                <p className="text-sm text-muted-foreground">{uploadingResult ? "Uploading result and preparing messages…" : "Parents receive a queue entry immediately; live WhatsApp sending can be activated once the connector is linked."}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Result distribution log</CardTitle>
-                <CardDescription>See which classes have uploaded result files and pending parent sends.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {results.length ? (
-                  results.map((result) => (
-                    <div key={result.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{result.exam_name}</p>
-                          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Class result record</p>
-                        </div>
-                        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", result.send_to_parent ? toneStyles.success : toneStyles.muted)}>
-                          {result.send_to_parent ? "send ready" : "stored"}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-muted-foreground">Stored file: {result.storage_path}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
-                    Result uploads will appear here.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Attendance risk monitor</CardTitle>
-                <CardDescription>Students below 75% attendance are grouped here for intervention and parent follow-up.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {riskStudents.length ? (
-                  riskStudents.map((student) => (
-                    <div key={student.student_id} className="rounded-2xl border border-danger/25 bg-danger-soft p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold text-danger">{student.full_name}</p>
-                          <p className="text-sm text-danger/80">Roll {student.roll_number} · Class {student.class_name}{student.section ? `-${student.section}` : ""}</p>
-                        </div>
-                        <span className="rounded-full border border-danger/25 bg-background/70 px-3 py-1 text-sm font-semibold text-danger">
-                          {formatPercent(student.attendance_percentage)}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Progress value={student.attendance_percentage ?? 0} className="h-2.5 bg-background/70" />
-                        <div className="grid grid-cols-3 gap-2 text-xs text-danger/80">
-                          <span>Present: {student.present_days}</span>
-                          <span>Absent: {student.absent_days}</span>
-                          <span>Leave: {student.leave_days}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
-                    No students are below the 75% threshold in the selected class yet.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-              <CardHeader>
-                <CardTitle className="font-display text-2xl">Operational notes</CardTitle>
-                <CardDescription>What is live in this first version and what is ready for the next iteration.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  "Class selection for 9, 10, 11, and 12 is live.",
-                  "Attendance status save is live in the backend.",
-                  "Parent messages are generated in English and Hindi.",
-                  "Excel/result files are stored securely in the backend.",
-                  "Live WhatsApp delivery needs the Twilio connector to be linked.",
-                  "Google Sheet live sync is ready for connector wiring next.",
-                ].map((note) => (
-                  <div key={note} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">
-                    <div className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent/70 text-accent-foreground">
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </div>
-                    <p>{note}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </section>
       </main>
     </div>
   );

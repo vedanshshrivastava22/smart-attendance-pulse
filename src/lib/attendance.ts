@@ -86,6 +86,32 @@ export const buildResultMessage = ({
   return `Hello ${guardian}, the ${examName} result for ${studentName} (${classLabel}) has been uploaded and is ready to share.`;
 };
 
+export const buildDailyReportMessage = ({
+  classLabel,
+  date,
+  present,
+  absent,
+  leave,
+  holiday,
+  total,
+  language,
+}: {
+  classLabel: string;
+  date: string;
+  present: number;
+  absent: number;
+  leave: number;
+  holiday: number;
+  total: number;
+  language: MessageLanguage;
+}) => {
+  if (language === "hindi") {
+    return `${date} के लिए ${classLabel} की दैनिक उपस्थिति रिपोर्ट: कुल ${total} छात्र, उपस्थित ${present}, अनुपस्थित ${absent}, अवकाश ${leave}, अवकाश दिवस ${holiday}।`;
+  }
+
+  return `Daily attendance report for ${classLabel} on ${date}: total ${total} students, present ${present}, absent ${absent}, leave ${leave}, holiday ${holiday}.`;
+};
+
 export const formatPercent = (value?: number | null) => `${Math.round(value ?? 0)}%`;
 
 export const todayDate = () => new Date().toISOString().slice(0, 10);
