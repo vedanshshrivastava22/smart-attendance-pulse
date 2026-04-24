@@ -256,12 +256,30 @@ const deriveDailySummary = (records: Database["public"]["Tables"]["attendance_re
 
 export const AttendanceDashboard = () => {
   const { toast } = useToast();
+  const studentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const attendanceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const resultFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("sign_in");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authFullName, setAuthFullName] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [staffProfile, setStaffProfile] = useState<Profile | null>(null);
+  const [staffRoles, setStaffRoles] = useState<StaffRole[]>([]);
+  const [activePanel, setActivePanel] = useState<ActivePanel>("teacher");
+
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<StudentWithAnalytics[]>([]);
   const [analytics, setAnalytics] = useState<AttendanceAnalytics[]>([]);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [imports, setImports] = useState<ExcelImport[]>([]);
   const [results, setResults] = useState<ResultUpload[]>([]);
+  const [dailyRecords, setDailyRecords] = useState<Database["public"]["Tables"]["attendance_records"]["Row"][]>([]);
+
   const [loading, setLoading] = useState(true);
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState<(typeof classOptions)[number]>("9");
@@ -272,18 +290,100 @@ export const AttendanceDashboard = () => {
   const [messageLanguage, setMessageLanguage] = useState<MessageLanguage>("english");
   const [sheetLink, setSheetLink] = useState("");
   const [examName, setExamName] = useState("Terminal Exam");
-  const [importingFile, setImportingFile] = useState(false);
+  const [staffReportPhone, setStaffReportPhone] = useState("");
+
+  const [importingStudentFile, setImportingStudentFile] = useState(false);
+  const [importingAttendanceFile, setImportingAttendanceFile] = useState(false);
   const [uploadingResult, setUploadingResult] = useState(false);
+  const [sendingDailyReport, setSendingDailyReport] = useState(false);
+
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [studentImportPreview, setStudentImportPreview] = useState<ImportPreviewRow[]>([]);
+  const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
+  const [lastImportSheetName, setLastImportSheetName] = useState("");
+
+  const isAdmin = staffRoles.includes("admin");
+  const canManageStaff = isAdmin;
+  const canAccessAdmin = isAdmin;
 
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? classes.find((item) => item.class_name === selectedClassName),
     [classes, selectedClassId, selectedClassName],
   );
 
+  const classLabel = useMemo(() => {
+    return `Class ${selectedClass?.class_name ?? selectedClassName}${selectedClass?.section ? `-${selectedClass.section}` : ""}`;
+  }, [selectedClass, selectedClassName]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((student) => {
+      const classMatch = selectedClassId ? student.class_id === selectedClassId : true;
+      const textMatch = `${student.full_name} ${student.roll_number} ${student.parent_name ?? ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase());
+      return classMatch && textMatch;
+    });
+  }, [search, selectedClassId, students]);
+
+  const riskStudents = useMemo(() => {
+    return analytics
+      .filter((item) => item.class_id === selectedClassId && item.below_75_percent)
+      .sort((a, b) => (a.attendance_percentage ?? 0) - (b.attendance_percentage ?? 0));
+  }, [analytics, selectedClassId]);
+
+  const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
+
+  const summary = useMemo(() => {
+    const total = filteredStudents.length;
+    const atRisk = riskStudents.length;
+    const sentCount = notifications.filter((item) => item.delivery_status === "sent").length;
+    const avgAttendance = filteredStudents.length
+      ? filteredStudents.reduce((acc, student) => acc + (student.analytics?.attendance_percentage ?? 0), 0) / filteredStudents.length
+      : 0;
+
+    return { total, atRisk, sentCount, avgAttendance };
+  }, [filteredStudents, notifications, riskStudents]);
+
   useEffect(() => {
-    void loadDashboard();
+    const bootstrapAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const userId = session?.user?.id ?? null;
+      setCurrentUserId(userId);
+      setSessionLoading(false);
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
+      setSessionLoading(false);
+    });
+
+    void bootstrapAuth();
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setStaffProfile(null);
+      setStaffRoles([]);
+      setClasses([]);
+      setStudents([]);
+      setAnalytics([]);
+      setNotifications([]);
+      setImports([]);
+      setResults([]);
+      setDailyRecords([]);
+      setLoading(false);
+      return;
+    }
+
+    void loadDashboard(currentUserId);
+  }, [currentUserId]);
 
   useEffect(() => {
     const matchingClass = classes.find((item) => item.class_name === selectedClassName);
@@ -307,24 +407,39 @@ export const AttendanceDashboard = () => {
     });
   }, [selectedClassId, students]);
 
-  const loadDashboard = async () => {
+  useEffect(() => {
+    if (canAccessAdmin) {
+      setActivePanel((current) => current);
+    } else {
+      setActivePanel("teacher");
+    }
+  }, [canAccessAdmin]);
+
+  const loadDashboard = async (userId: string) => {
     setLoading(true);
 
-    const [classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes] = await Promise.all([
+    const [profileRes, rolesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, dailyRes] = await Promise.all([
+      supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("school_classes").select("*").order("class_name"),
       supabase.from("students").select("*").order("roll_number"),
       supabase.from("attendance_analytics").select("*"),
-      supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(8),
-      supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(8),
-      supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(8),
+      supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase
+        .from("attendance_records")
+        .select("*")
+        .eq("class_id", selectedClassId || "00000000-0000-0000-0000-000000000000")
+        .eq("attendance_date", selectedDate),
     ]);
 
-    const errors = [classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error].filter(Boolean);
+    const errors = [profileRes.error, rolesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, dailyRes.error].filter(Boolean);
 
     if (errors.length) {
       toast({
-        title: "Backend setup is waiting for sign-in",
-        description: "Create a staff login first to start using attendance data and uploads.",
+        title: "Could not load dashboard",
+        description: errors[0]?.message ?? "Please try again.",
         variant: "destructive",
       });
       setLoading(false);
@@ -333,16 +448,78 @@ export const AttendanceDashboard = () => {
 
     const analyticsMap = new Map((analyticsRes.data ?? []).map((row) => [row.student_id, row]));
     const studentRows = (studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null }));
+    const roles = (rolesRes.data ?? []).map((row) => row.role);
 
+    setStaffProfile(profileRes.data ?? null);
+    setStaffRoles(roles.length ? roles : ["moderator"]);
     setClasses(classesRes.data ?? []);
     setStudents(studentRows);
     setAnalytics(analyticsRes.data ?? []);
     setNotifications(notificationsRes.data ?? []);
     setImports(importsRes.data ?? []);
     setResults(resultsRes.data ?? []);
+    setDailyRecords(dailyRes.data ?? []);
     setLoading(false);
   };
 
+  const refreshDailyRecords = async (classId: string, date: string) => {
+    if (!currentUserId) return;
+    const { data, error } = await supabase.from("attendance_records").select("*").eq("class_id", classId).eq("attendance_date", date);
+    if (!error) {
+      setDailyRecords(data ?? []);
+    }
+  };
+
+  const handleAuthSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmittingAuth(true);
+
+    try {
+      if (authMode === "sign_up") {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              full_name: authFullName,
+              phone: authPhone,
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Staff account created",
+          description: "Check the email inbox to verify the account before signing in.",
+        });
+        setAuthMode("sign_in");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) throw error;
+
+        toast({ title: "Signed in", description: "Welcome back to the attendance control center." });
+      }
+    } catch (error) {
+      toast({
+        title: authMode === "sign_up" ? "Could not create staff account" : "Could not sign in",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast({ title: "Signed out", description: "Staff session closed successfully." });
+  };
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
       const classMatch = selectedClassId ? student.class_id === selectedClassId : true;
