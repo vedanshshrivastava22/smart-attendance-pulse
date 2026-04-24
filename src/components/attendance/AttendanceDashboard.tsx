@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -7,22 +7,31 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   GraduationCap,
+  LogIn,
+  LogOut,
   MessageCircle,
   Phone,
   Send,
+  ShieldCheck,
+  Sparkles,
   Upload,
+  UserCog,
+  UserSquare2,
   Users,
 } from "lucide-react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
+import * as XLSX from "xlsx";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  buildDailyReportMessage,
   buildResultMessage,
   classOptions,
   formatPercent,
@@ -36,9 +45,11 @@ import {
   type MessageLanguage,
   type NotificationSendMode,
 } from "@/lib/attendance";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,10 +60,48 @@ type AttendanceAnalytics = Database["public"]["Views"]["attendance_analytics"]["
 type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Row"];
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type UserRole = Database["public"]["Tables"]["user_roles"]["Row"];
+type StaffRole = Database["public"]["Enums"]["app_role"];
+type NotificationType = Database["public"]["Enums"]["notification_type"];
+type ImportSourceType = Database["public"]["Enums"]["import_source_type"];
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
 };
+
+type AuthMode = "sign_in" | "sign_up";
+type ActivePanel = "teacher" | "admin";
+
+type DailySummary = {
+  present: number;
+  absent: number;
+  leave: number;
+  holiday: number;
+  total: number;
+};
+
+type ImportPreviewRow = {
+  full_name: string;
+  roll_number: string;
+  parent_name: string;
+  parent_phone: string;
+  whatsapp_phone: string;
+  class_name: string;
+  preferred_language: MessageLanguage;
+  admission_number: string;
+  notes: string;
+};
+
+type AttendanceImportRow = {
+  full_name: string;
+  roll_number: string;
+  status: AttendanceStatus;
+  attendance_date: string;
+  notes: string;
+};
+
+const MotionCard = motion(Card);
 
 const StatCard = ({
   title,
@@ -65,18 +114,20 @@ const StatCard = ({
   hint: string;
   icon: typeof Users;
 }) => (
-  <Card className="border-border/70 bg-card/80 backdrop-blur-sm">
-    <CardContent className="flex items-start justify-between p-5">
-      <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-        <p className="text-3xl font-semibold text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground">{hint}</p>
-      </div>
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/70 text-accent-foreground shadow-[var(--shadow-soft)]">
-        <Icon className="h-5 w-5" />
-      </div>
-    </CardContent>
-  </Card>
+  <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+    <Card className="border-border/70 bg-card/80 backdrop-blur-sm">
+      <CardContent className="flex items-start justify-between p-5">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
+          <p className="text-3xl font-semibold text-foreground">{value}</p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
+        </div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/70 text-accent-foreground shadow-[var(--shadow-soft)]">
+          <Icon className="h-5 w-5" />
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
 );
 
 const toneStyles: Record<string, string> = {
@@ -84,6 +135,123 @@ const toneStyles: Record<string, string> = {
   danger: "border-danger/30 bg-danger-soft text-danger",
   warning: "border-warning/30 bg-warning-soft text-warning",
   muted: "border-border/80 bg-muted text-muted-foreground",
+};
+
+const roleLabels: Record<StaffRole, string> = {
+  admin: "Admin",
+  moderator: "Teacher",
+  user: "Staff",
+};
+
+const panelMeta: Record<ActivePanel, { label: string; icon: typeof ShieldCheck; note: string }> = {
+  admin: {
+    label: "Admin panel",
+    icon: ShieldCheck,
+    note: "Manage staff visibility, imports, analytics, and daily reporting controls.",
+  },
+  teacher: {
+    label: "Teacher panel",
+    icon: UserSquare2,
+    note: "Mark attendance quickly, upload results, and trigger daily class summaries.",
+  },
+};
+
+const readWorkbookRows = async (file: File) => {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  return { rows, sheetName };
+};
+
+const normalizeHeader = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const normalizePhone = (value: unknown) => String(value ?? "").replace(/[^\d+]/g, "").trim();
+
+const toMessageLanguage = (value: unknown): MessageLanguage => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw === "hindi" ? "hindi" : "english";
+};
+
+const toAttendanceStatus = (value: unknown): AttendanceStatus | null => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (attendanceStatuses.includes(raw as AttendanceStatus)) {
+    return raw as AttendanceStatus;
+  }
+  return null;
+};
+
+const normalizeDateInput = (value: unknown, fallback: string) => {
+  if (!value) return fallback;
+  if (typeof value === "number") {
+    const date = XLSX.SSF.parse_date_code(value);
+    if (date) {
+      return `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed.toISOString().slice(0, 10);
+};
+
+const mapStudentImportRows = (rows: Record<string, unknown>[], selectedClassName: string): ImportPreviewRow[] => {
+  return rows
+    .map((row) => {
+      const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+      const full_name = String(normalized.full_name || normalized.student_name || normalized.name || "").trim();
+      const roll_number = String(normalized.roll_number || normalized.roll || "").trim();
+      const parent_name = String(normalized.parent_name || normalized.guardian_name || "").trim();
+      const parent_phone = normalizePhone(normalized.parent_phone || normalized.phone || normalized.guardian_phone);
+      const whatsapp_phone = normalizePhone(normalized.whatsapp_phone || normalized.parent_whatsapp || parent_phone);
+      const class_name = String(normalized.class_name || normalized.class || selectedClassName).trim() || selectedClassName;
+      const admission_number = String(normalized.admission_number || normalized.admission_no || "").trim();
+      const notes = String(normalized.notes || "").trim();
+      return {
+        full_name,
+        roll_number,
+        parent_name,
+        parent_phone,
+        whatsapp_phone,
+        class_name,
+        preferred_language: toMessageLanguage(normalized.preferred_language || normalized.language),
+        admission_number,
+        notes,
+      };
+    })
+    .filter((row) => row.full_name && row.roll_number && row.parent_phone);
+};
+
+const mapAttendanceImportRows = (rows: Record<string, unknown>[], selectedDate: string): AttendanceImportRow[] => {
+  return rows
+    .map((row) => {
+      const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+      const status = toAttendanceStatus(normalized.status || normalized.attendance_status);
+      return {
+        full_name: String(normalized.full_name || normalized.student_name || normalized.name || "").trim(),
+        roll_number: String(normalized.roll_number || normalized.roll || "").trim(),
+        status: status ?? "present",
+        attendance_date: normalizeDateInput(normalized.attendance_date || normalized.date, selectedDate),
+        notes: String(normalized.notes || "").trim(),
+      };
+    })
+    .filter((row) => row.full_name && row.roll_number);
+};
+
+const emptyDailySummary = (): DailySummary => ({ present: 0, absent: 0, leave: 0, holiday: 0, total: 0 });
+
+const deriveDailySummary = (records: Database["public"]["Tables"]["attendance_records"]["Row"][]) => {
+  return records.reduce<DailySummary>((acc, item) => {
+    acc[item.status] += 1;
+    acc.total += 1;
+    return acc;
+  }, emptyDailySummary());
 };
 
 export const AttendanceDashboard = () => {
