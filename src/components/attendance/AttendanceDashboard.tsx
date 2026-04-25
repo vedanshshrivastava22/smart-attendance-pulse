@@ -435,9 +435,15 @@ export const AttendanceDashboard = () => {
     setIsSubmittingAuth(true);
 
     try {
+      const phoneDigits = authPhone.replace(/[^0-9]/g, "");
+      if (!phoneDigits || phoneDigits.length < 7) {
+        throw new Error("Please enter a valid phone number (at least 7 digits).");
+      }
+      const syntheticEmail = phoneToEmail(authPhone);
+
       if (authMode === "sign_up") {
         const { error } = await supabase.auth.signUp({
-          email: authEmail,
+          email: syntheticEmail,
           password: authPassword,
           options: {
             emailRedirectTo: window.location.origin,
@@ -448,10 +454,10 @@ export const AttendanceDashboard = () => {
           },
         });
         if (error) throw error;
-        toast({ title: "Staff account created", description: "Please verify the email address before signing in." });
+        toast({ title: "Staff account created", description: "You can sign in now using your phone number." });
         setAuthMode("sign_in");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        const { error } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
         if (error) throw error;
         toast({ title: "Signed in", description: "Welcome back." });
       }
