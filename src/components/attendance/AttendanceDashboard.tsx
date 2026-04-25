@@ -1383,6 +1383,108 @@ export const AttendanceDashboard = () => {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
+                    <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Month total</p>
+                        <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(payrollOverview.total)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-success/30 bg-success-soft p-4 text-success">
+                        <p className="text-xs uppercase tracking-[0.16em]">Paid</p>
+                        <p className="mt-2 text-xl font-semibold">{payrollOverview.paid}</p>
+                      </div>
+                      <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-warning">
+                        <p className="text-xs uppercase tracking-[0.16em]">Pending</p>
+                        <p className="mt-2 text-xl font-semibold">{payrollOverview.pending}</p>
+                      </div>
+                    </div>
+
+                    {isAdmin ? (
+                      <form className="space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4" onSubmit={handlePayrollSubmit}>
+                        <div className="space-y-2">
+                          <Label htmlFor="payrollStaff">Staff member</Label>
+                          <Select value={payrollStaffId} onValueChange={setPayrollStaffId}>
+                            <SelectTrigger id="payrollStaff" className="bg-background/80"><SelectValue placeholder="Choose staff" /></SelectTrigger>
+                            <SelectContent>
+                              {staffProfiles.map((staff) => (
+                                <SelectItem key={staff.id} value={staff.id}>{staff.full_name || staff.phone || "Staff account"}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="payrollMonth">Payroll month</Label>
+                            <Input id="payrollMonth" type="month" value={payrollMonth.slice(0, 7)} onChange={(e) => setPayrollMonth(`${e.target.value}-01`)} className="bg-background/80" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="payrollStatus">Status</Label>
+                            <Select value={payrollStatus} onValueChange={(value) => setPayrollStatus(value as PayrollStatus)}>
+                              <SelectTrigger id="payrollStatus" className="bg-background/80"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(payrollStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <Input type="number" min="0" step="1" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} placeholder="Base salary" className="bg-background/80" required />
+                          <Input type="number" min="0" step="1" value={allowances} onChange={(e) => setAllowances(e.target.value)} placeholder="Allowances" className="bg-background/80" />
+                          <Input type="number" min="0" step="1" value={deductions} onChange={(e) => setDeductions(e.target.value)} placeholder="Deductions" className="bg-background/80" />
+                        </div>
+                        <Input value={payrollNotes} onChange={(e) => setPayrollNotes(e.target.value)} placeholder="Notes, bonus, advance, or payment reference" className="bg-background/80" />
+                        <Button type="submit" className="w-full" disabled={savingPayroll || !payrollStaffId}>
+                          <IndianRupee className="h-4 w-4" />
+                          {savingPayroll ? "Saving salary..." : "Save salary record"}
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">Only Admin can create or edit salary records. Staff can download their own payslips.</div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Payroll ledger</CardTitle>
+                    <CardDescription>Monthly salary status with one-click payslip PDF.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {payroll.length ? (
+                      payroll.map((item) => (
+                        <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold text-foreground">{item.profiles?.full_name || "Staff member"}</p>
+                              <p className="text-sm text-muted-foreground">{format(new Date(item.payroll_month), "MMMM yyyy")} · {item.profiles?.phone || "Phone pending"}</p>
+                            </div>
+                            <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", toneStyles[payrollTone[item.status]])}>{payrollStatusLabels[item.status]}</span>
+                          </div>
+                          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-4">
+                            <span className="text-muted-foreground">Base {formatCurrency(item.base_salary)}</span>
+                            <span className="text-muted-foreground">Allow {formatCurrency(item.allowances)}</span>
+                            <span className="text-muted-foreground">Deduct {formatCurrency(item.deductions)}</span>
+                            <span className="font-semibold text-foreground">Net {formatCurrency(item.net_salary)}</span>
+                          </div>
+                          <Button variant="outline" size="sm" className="mt-4" onClick={() => downloadPayslip(item)}>
+                            <Download className="h-4 w-4" />
+                            Download payslip
+                          </Button>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Salary records will appear here after Admin saves payroll.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader>
