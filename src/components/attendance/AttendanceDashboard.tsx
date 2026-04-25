@@ -827,10 +827,33 @@ export const AttendanceDashboard = () => {
 
             <MotionCard initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="border-border/70 bg-panel/90 shadow-[var(--shadow-elevated)]">
               <CardHeader>
-                <CardTitle className="font-display text-3xl">{authMode === "sign_in" ? "Staff login" : "Create staff account"}</CardTitle>
-                <CardDescription>Sign in with your phone number and password — no email needed.</CardDescription>
+                <CardTitle className="font-display text-3xl">
+                  {authMode === "sign_in" ? "Sign in" : "Create your account"}
+                </CardTitle>
+                <CardDescription>
+                  Phone number + password. The <strong>first account</strong> becomes the <strong>Admin</strong>; later sign-ups are <strong>Teachers</strong>.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <Tabs value={authMode} onValueChange={(value) => setAuthMode(value as AuthMode)} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="sign_in">
+                      <LogIn className="h-4 w-4" /> Sign in
+                    </TabsTrigger>
+                    <TabsTrigger value="sign_up">
+                      <ShieldCheck className="h-4 w-4" /> Create account
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {authMode === "sign_up"
+                      ? "👑 Setting up the school for the first time? Create the Admin account here — it's the very first signup."
+                      : "Already registered? Sign in with your phone & password. New here? Switch to Create account."}
+                  </p>
+                </div>
+
                 <form className="space-y-4" onSubmit={handleAuthSubmit}>
                   {authMode === "sign_up" && (
                     <div className="space-y-2">
@@ -856,11 +879,8 @@ export const AttendanceDashboard = () => {
                     <Input id="password" type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="bg-background/70" required minLength={6} />
                   </div>
                   <Button type="submit" size="lg" className="w-full">
-                    <LogIn className="h-4 w-4" />
+                    {authMode === "sign_in" ? <LogIn className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
                     {isSubmittingAuth ? "Please wait..." : authMode === "sign_in" ? "Sign in" : "Create account"}
-                  </Button>
-                  <Button type="button" variant="outline" className="w-full" onClick={() => setAuthMode((mode) => (mode === "sign_in" ? "sign_up" : "sign_in"))}>
-                    {authMode === "sign_in" ? "Need a staff account?" : "Already have an account?"}
                   </Button>
                 </form>
               </CardContent>
