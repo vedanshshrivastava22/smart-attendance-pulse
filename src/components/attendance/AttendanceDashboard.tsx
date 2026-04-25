@@ -828,25 +828,28 @@ export const AttendanceDashboard = () => {
             <MotionCard initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="border-border/70 bg-panel/90 shadow-[var(--shadow-elevated)]">
               <CardHeader>
                 <CardTitle className="font-display text-3xl">{authMode === "sign_in" ? "Staff login" : "Create staff account"}</CardTitle>
-                <CardDescription>Email/password access for teachers and admins.</CardDescription>
+                <CardDescription>Sign in with your phone number and password — no email needed.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form className="space-y-4" onSubmit={handleAuthSubmit}>
                   {authMode === "sign_up" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="fullName">Full name</Label>
-                        <Input id="fullName" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} className="bg-background/70" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Phone / WhatsApp</Label>
-                        <Input id="phone" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} className="bg-background/70" />
-                      </div>
-                    </>
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Full name</Label>
+                      <Input id="fullName" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} className="bg-background/70" required />
+                    </div>
                   )}
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="bg-background/70" required />
+                    <Label htmlFor="phone">Phone number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="e.g. 9876543210"
+                      value={authPhone}
+                      onChange={(e) => setAuthPhone(e.target.value)}
+                      className="bg-background/70"
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
