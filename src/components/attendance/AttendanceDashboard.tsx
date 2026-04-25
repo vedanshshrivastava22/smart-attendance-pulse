@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   AlertCircle,
@@ -6,8 +6,10 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  Download,
   FileSpreadsheet,
   GraduationCap,
+  IndianRupee,
   LogIn,
   LogOut,
   MessageCircle,
@@ -19,8 +21,11 @@ import {
   UserCog,
   UserSquare2,
   Users,
+  WalletCards,
+  type LucideIcon,
 } from "lucide-react";
 import { format } from "date-fns";
+import jsPDF from "jspdf";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
@@ -63,7 +68,9 @@ type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Ro
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { profiles?: Pick<Profile, "full_name" | "phone" | "user_id"> | null };
 type StaffRole = Database["public"]["Enums"]["app_role"];
+type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
@@ -204,8 +211,8 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     })
     .filter((row) => row.full_name && row.roll_number);
 
-const StatCard = ({ title, value, hint, icon: Icon }: { title: string; value: string; hint: string; icon: typeof Users }) => (
-  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
+  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
     <Card className="border-border/70 bg-card/85 shadow-[var(--shadow-soft)] backdrop-blur-sm">
       <CardContent className="flex items-start justify-between p-5">
         <div className="space-y-2">
@@ -219,7 +226,8 @@ const StatCard = ({ title, value, hint, icon: Icon }: { title: string; value: st
       </CardContent>
     </Card>
   </motion.div>
-);
+));
+StatCard.displayName = "StatCard";
 
 export const AttendanceDashboard = () => {
   const { toast } = useToast();
