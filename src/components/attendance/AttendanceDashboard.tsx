@@ -1314,7 +1314,7 @@ export const AttendanceDashboard = () => {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-base font-semibold">{profile?.full_name || "Staff user"}</p>
-                      <p className="text-sm text-muted-foreground">{authEmail || "Logged in account"}</p>
+                      <p className="text-sm text-muted-foreground">{profile?.phone || "Logged-in staff account"}</p>
                     </div>
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/75 text-accent-foreground"><UserCog className="h-5 w-5" /></div>
                   </div>
