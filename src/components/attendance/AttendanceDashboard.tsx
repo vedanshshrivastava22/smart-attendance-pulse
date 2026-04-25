@@ -122,6 +122,23 @@ const roleLabels: Record<StaffRole, string> = {
   user: "Staff",
 };
 
+const payrollStatusLabels: Record<PayrollStatus, string> = {
+  draft: "Draft",
+  paid: "Paid",
+  hold: "On hold",
+};
+
+const payrollTone: Record<PayrollStatus, string> = {
+  draft: "warning",
+  paid: "success",
+  hold: "danger",
+};
+
+const formatCurrency = (value?: number | null) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value ?? 0);
+
+const currentMonthStart = () => `${new Date().toISOString().slice(0, 7)}-01`;
+
 const statCards = [
   { key: "students", title: "Students in class", hint: "Live class roster count", icon: Users },
   { key: "attendance", title: "Average attendance", hint: "Across filtered students", icon: CheckCircle2 },
