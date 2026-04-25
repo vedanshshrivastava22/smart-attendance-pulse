@@ -229,11 +229,16 @@ export const AttendanceDashboard = () => {
 
   const [sessionLoading, setSessionLoading] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode>("sign_in");
-  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authFullName, setAuthFullName] = useState("");
   const [authPhone, setAuthPhone] = useState("");
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+
+  // Convert a phone number to a deterministic synthetic email used for Supabase auth
+  const phoneToEmail = (phone: string) => {
+    const digits = phone.replace(/[^0-9]/g, "");
+    return `${digits}@staff.school.local`;
+  };
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -430,9 +435,15 @@ export const AttendanceDashboard = () => {
     setIsSubmittingAuth(true);
 
     try {
+      const phoneDigits = authPhone.replace(/[^0-9]/g, "");
+      if (!phoneDigits || phoneDigits.length < 7) {
+        throw new Error("Please enter a valid phone number (at least 7 digits).");
+      }
+      const syntheticEmail = phoneToEmail(authPhone);
+
       if (authMode === "sign_up") {
         const { error } = await supabase.auth.signUp({
-          email: authEmail,
+          email: syntheticEmail,
           password: authPassword,
           options: {
             emailRedirectTo: window.location.origin,
@@ -443,10 +454,10 @@ export const AttendanceDashboard = () => {
           },
         });
         if (error) throw error;
-        toast({ title: "Staff account created", description: "Please verify the email address before signing in." });
+        toast({ title: "Staff account created", description: "You can sign in now using your phone number." });
         setAuthMode("sign_in");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        const { error } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
         if (error) throw error;
         toast({ title: "Signed in", description: "Welcome back." });
       }
@@ -793,11 +804,11 @@ export const AttendanceDashboard = () => {
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
-              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">Attendance Automation</Badge>
+              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Attendance + Results + Reports</Badge>
               <div className="space-y-4">
-                <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">Teacher and admin control for attendance, Excel import, reports, and parent messaging.</h1>
+                <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-                  Built for Classes 9 to 12 with secure staff login, daily present/absent summaries, result uploads, and automatic shortage analytics below 75%.
+                  Sign in with just your <strong>phone number</strong> and password. Manage Classes 9–12 attendance, Excel imports, results, and daily WhatsApp summaries — all from one beautiful dashboard.
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -817,25 +828,28 @@ export const AttendanceDashboard = () => {
             <MotionCard initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="border-border/70 bg-panel/90 shadow-[var(--shadow-elevated)]">
               <CardHeader>
                 <CardTitle className="font-display text-3xl">{authMode === "sign_in" ? "Staff login" : "Create staff account"}</CardTitle>
-                <CardDescription>Email/password access for teachers and admins.</CardDescription>
+                <CardDescription>Sign in with your phone number and password — no email needed.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form className="space-y-4" onSubmit={handleAuthSubmit}>
                   {authMode === "sign_up" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="fullName">Full name</Label>
-                        <Input id="fullName" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} className="bg-background/70" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Phone / WhatsApp</Label>
-                        <Input id="phone" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} className="bg-background/70" />
-                      </div>
-                    </>
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Full name</Label>
+                      <Input id="fullName" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} className="bg-background/70" required />
+                    </div>
                   )}
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="bg-background/70" required />
+                    <Label htmlFor="phone">Phone number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="e.g. 9876543210"
+                      value={authPhone}
+                      onChange={(e) => setAuthPhone(e.target.value)}
+                      className="bg-background/70"
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
@@ -1300,7 +1314,7 @@ export const AttendanceDashboard = () => {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-base font-semibold">{profile?.full_name || "Staff user"}</p>
-                      <p className="text-sm text-muted-foreground">{authEmail || "Logged in account"}</p>
+                      <p className="text-sm text-muted-foreground">{profile?.phone || "Logged-in staff account"}</p>
                     </div>
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/75 text-accent-foreground"><UserCog className="h-5 w-5" /></div>
                   </div>
