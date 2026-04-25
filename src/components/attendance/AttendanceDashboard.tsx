@@ -340,6 +340,15 @@ export const AttendanceDashboard = () => {
 
   const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
 
+  const payrollOverview = useMemo(() => {
+    const monthItems = payroll.filter((item) => item.payroll_month?.slice(0, 7) === payrollMonth.slice(0, 7));
+    return {
+      total: monthItems.reduce((sum, item) => sum + (item.net_salary ?? 0), 0),
+      paid: monthItems.filter((item) => item.status === "paid").length,
+      pending: monthItems.filter((item) => item.status !== "paid").length,
+    };
+  }, [payroll, payrollMonth]);
+
   const overview = useMemo(() => {
     const avgAttendance = filteredStudents.length
       ? filteredStudents.reduce((sum, student) => sum + (student.analytics?.attendance_percentage ?? 0), 0) / filteredStudents.length
@@ -361,18 +370,25 @@ export const AttendanceDashboard = () => {
 
   const loadDashboard = async (userId: string) => {
     setLoading(true);
-    const [profileRes, rolesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes] = await Promise.all([
+    await supabase.rpc("ensure_staff_profile", {
+      _full_name: authFullName || null,
+      _phone: authPhone || null,
+    });
+
+    const [profileRes, rolesRes, staffProfilesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.from("profiles").select("*").order("full_name"),
       supabase.from("school_classes").select("*").order("class_name"),
       supabase.from("students").select("*").order("roll_number"),
       supabase.from("attendance_analytics").select("*"),
       supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
     ]);
 
-    const errors = [profileRes.error, rolesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error].filter(Boolean);
+    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
     if (errors.length) {
       toast({ title: "Could not load dashboard", description: errors[0]?.message ?? "Please try again.", variant: "destructive" });
       setLoading(false);
@@ -382,12 +398,14 @@ export const AttendanceDashboard = () => {
     const analyticsMap = new Map((analyticsRes.data ?? []).map((row) => [row.student_id, row]));
     setProfile(profileRes.data ?? null);
     setRoles((rolesRes.data ?? []).map((item) => item.role));
+    setStaffProfiles(staffProfilesRes.data ?? []);
     setClasses(classesRes.data ?? []);
     setStudents((studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null })));
     setAnalytics(analyticsRes.data ?? []);
     setNotifications(notificationsRes.data ?? []);
     setImports(importsRes.data ?? []);
     setResults(resultsRes.data ?? []);
+    setPayroll((payrollRes.data ?? []) as SalaryPayroll[]);
     setLoading(false);
   };
 
@@ -415,12 +433,14 @@ export const AttendanceDashboard = () => {
     if (!currentUserId) {
       setProfile(null);
       setRoles([]);
+      setStaffProfiles([]);
       setClasses([]);
       setStudents([]);
       setAnalytics([]);
       setNotifications([]);
       setImports([]);
       setResults([]);
+      setPayroll([]);
       setDailyRecords([]);
       return;
     }
@@ -456,6 +476,12 @@ export const AttendanceDashboard = () => {
       setActivePanel("teacher");
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!payrollStaffId && staffProfiles.length) {
+      setPayrollStaffId(staffProfiles[0].id);
+    }
+  }, [payrollStaffId, staffProfiles]);
 
   const refreshAll = async () => {
     if (!currentUserId) return;
