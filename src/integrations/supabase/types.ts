@@ -349,6 +349,62 @@ export type Database = {
           },
         ]
       }
+      salary_payroll: {
+        Row: {
+          allowances: number
+          base_salary: number
+          created_at: string
+          created_by: string | null
+          deductions: number
+          id: string
+          net_salary: number | null
+          notes: string | null
+          paid_on: string | null
+          payroll_month: string
+          staff_profile_id: string
+          status: Database["public"]["Enums"]["payroll_status"]
+          updated_at: string
+        }
+        Insert: {
+          allowances?: number
+          base_salary?: number
+          created_at?: string
+          created_by?: string | null
+          deductions?: number
+          id?: string
+          net_salary?: number | null
+          notes?: string | null
+          paid_on?: string | null
+          payroll_month: string
+          staff_profile_id: string
+          status?: Database["public"]["Enums"]["payroll_status"]
+          updated_at?: string
+        }
+        Update: {
+          allowances?: number
+          base_salary?: number
+          created_at?: string
+          created_by?: string | null
+          deductions?: number
+          id?: string
+          net_salary?: number | null
+          notes?: string | null
+          paid_on?: string | null
+          payroll_month?: string
+          staff_profile_id?: string
+          status?: Database["public"]["Enums"]["payroll_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_payroll_staff_profile_id_fkey"
+            columns: ["staff_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       school_classes: {
         Row: {
           academic_year: string
@@ -482,6 +538,10 @@ export type Database = {
     }
     Functions: {
       can_manage_school_data: { Args: { _user_id: string }; Returns: boolean }
+      ensure_staff_profile: {
+        Args: { _full_name?: string; _phone?: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -499,6 +559,7 @@ export type Database = {
       notification_delivery_status: "pending" | "sent" | "failed" | "skipped"
       notification_send_mode: "auto" | "manual"
       notification_type: "attendance" | "result" | "daily_report"
+      payroll_status: "draft" | "paid" | "hold"
       result_file_type: "pdf"
     }
     CompositeTypes: {
@@ -635,6 +696,7 @@ export const Constants = {
       notification_delivery_status: ["pending", "sent", "failed", "skipped"],
       notification_send_mode: ["auto", "manual"],
       notification_type: ["attendance", "result", "daily_report"],
+      payroll_status: ["draft", "paid", "hold"],
       result_file_type: ["pdf"],
     },
   },
