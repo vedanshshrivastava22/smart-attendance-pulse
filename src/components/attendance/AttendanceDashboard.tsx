@@ -472,9 +472,7 @@ export const AttendanceDashboard = () => {
   }, [selectedClassId, students]);
 
   useEffect(() => {
-    if (!isAdmin) {
-      setActivePanel("teacher");
-    }
+    setActivePanel(isAdmin ? "admin" : "teacher");
   }, [isAdmin]);
 
   useEffect(() => {
@@ -515,12 +513,15 @@ export const AttendanceDashboard = () => {
           },
         });
         if (error) throw error;
-        toast({ title: "Staff account created", description: "You can sign in now using your phone number." });
-        setAuthMode("sign_in");
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
+        if (signInError) throw signInError;
+        await supabase.rpc("ensure_staff_profile", { _full_name: authFullName, _phone: authPhone });
+        toast({ title: "Staff account created", description: "You are signed in now. Admin panel opens automatically for Admin accounts." });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
         if (error) throw error;
-        toast({ title: "Signed in", description: "Welcome back." });
+        await supabase.rpc("ensure_staff_profile", { _full_name: null, _phone: authPhone });
+        toast({ title: "Signed in", description: "Welcome back. Your panel is loading." });
       }
     } catch (error) {
       toast({
