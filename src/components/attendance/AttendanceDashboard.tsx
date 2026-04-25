@@ -1118,6 +1118,7 @@ export const AttendanceDashboard = () => {
                 <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5">Attendance</TabsTrigger>
                 <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5">Excel & Sheets</TabsTrigger>
                 <TabsTrigger value="results" className="rounded-xl px-4 py-2.5">Results</TabsTrigger>
+                <TabsTrigger value="salary" className="rounded-xl px-4 py-2.5">Salary</TabsTrigger>
                 <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5">Analytics</TabsTrigger>
               </TabsList>
 
