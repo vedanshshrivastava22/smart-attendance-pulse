@@ -229,11 +229,16 @@ export const AttendanceDashboard = () => {
 
   const [sessionLoading, setSessionLoading] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode>("sign_in");
-  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authFullName, setAuthFullName] = useState("");
   const [authPhone, setAuthPhone] = useState("");
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+
+  // Convert a phone number to a deterministic synthetic email used for Supabase auth
+  const phoneToEmail = (phone: string) => {
+    const digits = phone.replace(/[^0-9]/g, "");
+    return `${digits}@staff.school.local`;
+  };
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
