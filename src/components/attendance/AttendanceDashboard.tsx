@@ -854,6 +854,66 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  const handlePayrollSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isAdmin || !payrollStaffId) return;
+
+    setSavingPayroll(true);
+    try {
+      const { error } = await supabase.from("salary_payroll").upsert(
+        {
+          staff_profile_id: payrollStaffId,
+          payroll_month: payrollMonth,
+          base_salary: Number(baseSalary || 0),
+          allowances: Number(allowances || 0),
+          deductions: Number(deductions || 0),
+          status: payrollStatus,
+          paid_on: payrollStatus === "paid" ? todayDate() : null,
+          notes: payrollNotes || null,
+          created_by: currentUserId,
+        },
+        { onConflict: "staff_profile_id,payroll_month" },
+      );
+
+      if (error) throw error;
+      toast({ title: "Salary record saved", description: "Payroll is updated for the selected staff member." });
+      setBaseSalary("");
+      setAllowances("");
+      setDeductions("");
+      setPayrollNotes("");
+      setPayrollStatus("draft");
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Salary not saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingPayroll(false);
+    }
+  };
+
+  const downloadPayslip = (item: SalaryPayroll) => {
+    const staffName = item.profiles?.full_name || "Staff member";
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text("Salary Payslip", 20, 24);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Staff: ${staffName}`, 20, 42);
+    doc.text(`Phone: ${item.profiles?.phone || "-"}`, 20, 50);
+    doc.text(`Month: ${format(new Date(item.payroll_month), "MMMM yyyy")}`, 20, 58);
+    doc.text(`Status: ${payrollStatusLabels[item.status]}`, 20, 66);
+    doc.line(20, 76, 190, 76);
+    doc.text(`Base salary: ${formatCurrency(item.base_salary)}`, 24, 90);
+    doc.text(`Allowances: ${formatCurrency(item.allowances)}`, 24, 102);
+    doc.text(`Deductions: ${formatCurrency(item.deductions)}`, 24, 114);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Net salary: ${formatCurrency(item.net_salary)}`, 24, 130);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Paid on: ${item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"}`, 24, 144);
+    if (item.notes) doc.text(`Notes: ${item.notes}`, 24, 158, { maxWidth: 160 });
+    doc.save(`payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`);
+  };
+
   if (sessionLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
   }
