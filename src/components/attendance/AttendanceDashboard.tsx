@@ -269,6 +269,7 @@ export const AttendanceDashboard = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [activePanel, setActivePanel] = useState<ActivePanel>("teacher");
+  const [staffProfiles, setStaffProfiles] = useState<Profile[]>([]);
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<StudentWithAnalytics[]>([]);
@@ -276,6 +277,7 @@ export const AttendanceDashboard = () => {
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [imports, setImports] = useState<ExcelImport[]>([]);
   const [results, setResults] = useState<ResultUpload[]>([]);
+  const [payroll, setPayroll] = useState<SalaryPayroll[]>([]);
   const [dailyRecords, setDailyRecords] = useState<AttendanceRecord[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -289,6 +291,13 @@ export const AttendanceDashboard = () => {
   const [sheetLink, setSheetLink] = useState("");
   const [examName, setExamName] = useState("Terminal Exam");
   const [staffReportPhone, setStaffReportPhone] = useState("");
+  const [payrollStaffId, setPayrollStaffId] = useState("");
+  const [payrollMonth, setPayrollMonth] = useState(currentMonthStart());
+  const [baseSalary, setBaseSalary] = useState("");
+  const [allowances, setAllowances] = useState("");
+  const [deductions, setDeductions] = useState("");
+  const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
+  const [payrollNotes, setPayrollNotes] = useState("");
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
@@ -299,6 +308,7 @@ export const AttendanceDashboard = () => {
   const [importingAttendanceFile, setImportingAttendanceFile] = useState(false);
   const [uploadingResult, setUploadingResult] = useState(false);
   const [sendingDailyReport, setSendingDailyReport] = useState(false);
+  const [savingPayroll, setSavingPayroll] = useState(false);
 
   const isAdmin = roles.includes("admin");
   const selectedClass = useMemo(
