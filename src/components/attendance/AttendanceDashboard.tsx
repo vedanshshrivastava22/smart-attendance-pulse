@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   AlertCircle,
@@ -6,8 +6,10 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  Download,
   FileSpreadsheet,
   GraduationCap,
+  IndianRupee,
   LogIn,
   LogOut,
   MessageCircle,
@@ -19,8 +21,11 @@ import {
   UserCog,
   UserSquare2,
   Users,
+  WalletCards,
+  type LucideIcon,
 } from "lucide-react";
 import { format } from "date-fns";
+import jsPDF from "jspdf";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
@@ -63,7 +68,9 @@ type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Ro
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { profiles?: Pick<Profile, "full_name" | "phone" | "user_id"> | null };
 type StaffRole = Database["public"]["Enums"]["app_role"];
+type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
@@ -114,6 +121,23 @@ const roleLabels: Record<StaffRole, string> = {
   moderator: "Teacher",
   user: "Staff",
 };
+
+const payrollStatusLabels: Record<PayrollStatus, string> = {
+  draft: "Draft",
+  paid: "Paid",
+  hold: "On hold",
+};
+
+const payrollTone: Record<PayrollStatus, string> = {
+  draft: "warning",
+  paid: "success",
+  hold: "danger",
+};
+
+const formatCurrency = (value?: number | null) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value ?? 0);
+
+const currentMonthStart = () => `${new Date().toISOString().slice(0, 7)}-01`;
 
 const statCards = [
   { key: "students", title: "Students in class", hint: "Live class roster count", icon: Users },
@@ -204,8 +228,8 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     })
     .filter((row) => row.full_name && row.roll_number);
 
-const StatCard = ({ title, value, hint, icon: Icon }: { title: string; value: string; hint: string; icon: typeof Users }) => (
-  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
+  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
     <Card className="border-border/70 bg-card/85 shadow-[var(--shadow-soft)] backdrop-blur-sm">
       <CardContent className="flex items-start justify-between p-5">
         <div className="space-y-2">
@@ -219,7 +243,8 @@ const StatCard = ({ title, value, hint, icon: Icon }: { title: string; value: st
       </CardContent>
     </Card>
   </motion.div>
-);
+));
+StatCard.displayName = "StatCard";
 
 export const AttendanceDashboard = () => {
   const { toast } = useToast();
@@ -244,6 +269,7 @@ export const AttendanceDashboard = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [activePanel, setActivePanel] = useState<ActivePanel>("teacher");
+  const [staffProfiles, setStaffProfiles] = useState<Profile[]>([]);
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<StudentWithAnalytics[]>([]);
@@ -251,6 +277,7 @@ export const AttendanceDashboard = () => {
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [imports, setImports] = useState<ExcelImport[]>([]);
   const [results, setResults] = useState<ResultUpload[]>([]);
+  const [payroll, setPayroll] = useState<SalaryPayroll[]>([]);
   const [dailyRecords, setDailyRecords] = useState<AttendanceRecord[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -264,6 +291,13 @@ export const AttendanceDashboard = () => {
   const [sheetLink, setSheetLink] = useState("");
   const [examName, setExamName] = useState("Terminal Exam");
   const [staffReportPhone, setStaffReportPhone] = useState("");
+  const [payrollStaffId, setPayrollStaffId] = useState("");
+  const [payrollMonth, setPayrollMonth] = useState(currentMonthStart());
+  const [baseSalary, setBaseSalary] = useState("");
+  const [allowances, setAllowances] = useState("");
+  const [deductions, setDeductions] = useState("");
+  const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
+  const [payrollNotes, setPayrollNotes] = useState("");
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
@@ -274,6 +308,7 @@ export const AttendanceDashboard = () => {
   const [importingAttendanceFile, setImportingAttendanceFile] = useState(false);
   const [uploadingResult, setUploadingResult] = useState(false);
   const [sendingDailyReport, setSendingDailyReport] = useState(false);
+  const [savingPayroll, setSavingPayroll] = useState(false);
 
   const isAdmin = roles.includes("admin");
   const selectedClass = useMemo(
@@ -305,6 +340,15 @@ export const AttendanceDashboard = () => {
 
   const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
 
+  const payrollOverview = useMemo(() => {
+    const monthItems = payroll.filter((item) => item.payroll_month?.slice(0, 7) === payrollMonth.slice(0, 7));
+    return {
+      total: monthItems.reduce((sum, item) => sum + (item.net_salary ?? 0), 0),
+      paid: monthItems.filter((item) => item.status === "paid").length,
+      pending: monthItems.filter((item) => item.status !== "paid").length,
+    };
+  }, [payroll, payrollMonth]);
+
   const overview = useMemo(() => {
     const avgAttendance = filteredStudents.length
       ? filteredStudents.reduce((sum, student) => sum + (student.analytics?.attendance_percentage ?? 0), 0) / filteredStudents.length
@@ -326,18 +370,25 @@ export const AttendanceDashboard = () => {
 
   const loadDashboard = async (userId: string) => {
     setLoading(true);
-    const [profileRes, rolesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes] = await Promise.all([
+    await supabase.rpc("ensure_staff_profile", {
+      _full_name: authFullName || null,
+      _phone: authPhone || null,
+    });
+
+    const [profileRes, rolesRes, staffProfilesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.from("profiles").select("*").order("full_name"),
       supabase.from("school_classes").select("*").order("class_name"),
       supabase.from("students").select("*").order("roll_number"),
       supabase.from("attendance_analytics").select("*"),
       supabase.from("notification_events").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
+      supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
     ]);
 
-    const errors = [profileRes.error, rolesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error].filter(Boolean);
+    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
     if (errors.length) {
       toast({ title: "Could not load dashboard", description: errors[0]?.message ?? "Please try again.", variant: "destructive" });
       setLoading(false);
@@ -347,12 +398,14 @@ export const AttendanceDashboard = () => {
     const analyticsMap = new Map((analyticsRes.data ?? []).map((row) => [row.student_id, row]));
     setProfile(profileRes.data ?? null);
     setRoles((rolesRes.data ?? []).map((item) => item.role));
+    setStaffProfiles(staffProfilesRes.data ?? []);
     setClasses(classesRes.data ?? []);
     setStudents((studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null })));
     setAnalytics(analyticsRes.data ?? []);
     setNotifications(notificationsRes.data ?? []);
     setImports(importsRes.data ?? []);
     setResults(resultsRes.data ?? []);
+    setPayroll((payrollRes.data ?? []) as SalaryPayroll[]);
     setLoading(false);
   };
 
@@ -380,12 +433,14 @@ export const AttendanceDashboard = () => {
     if (!currentUserId) {
       setProfile(null);
       setRoles([]);
+      setStaffProfiles([]);
       setClasses([]);
       setStudents([]);
       setAnalytics([]);
       setNotifications([]);
       setImports([]);
       setResults([]);
+      setPayroll([]);
       setDailyRecords([]);
       return;
     }
@@ -417,10 +472,14 @@ export const AttendanceDashboard = () => {
   }, [selectedClassId, students]);
 
   useEffect(() => {
-    if (!isAdmin) {
-      setActivePanel("teacher");
-    }
+    setActivePanel(isAdmin ? "admin" : "teacher");
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!payrollStaffId && staffProfiles.length) {
+      setPayrollStaffId(staffProfiles[0].id);
+    }
+  }, [payrollStaffId, staffProfiles]);
 
   const refreshAll = async () => {
     if (!currentUserId) return;
@@ -454,12 +513,15 @@ export const AttendanceDashboard = () => {
           },
         });
         if (error) throw error;
-        toast({ title: "Staff account created", description: "You can sign in now using your phone number." });
-        setAuthMode("sign_in");
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
+        if (signInError) throw signInError;
+        await supabase.rpc("ensure_staff_profile", { _full_name: authFullName, _phone: authPhone });
+        toast({ title: "Staff account created", description: "You are signed in now. Admin panel opens automatically for Admin accounts." });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: syntheticEmail, password: authPassword });
         if (error) throw error;
-        toast({ title: "Signed in", description: "Welcome back." });
+        await supabase.rpc("ensure_staff_profile", { _full_name: null, _phone: authPhone });
+        toast({ title: "Signed in", description: "Welcome back. Your panel is loading." });
       }
     } catch (error) {
       toast({
@@ -792,6 +854,66 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  const handlePayrollSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isAdmin || !payrollStaffId) return;
+
+    setSavingPayroll(true);
+    try {
+      const { error } = await supabase.from("salary_payroll").upsert(
+        {
+          staff_profile_id: payrollStaffId,
+          payroll_month: payrollMonth,
+          base_salary: Number(baseSalary || 0),
+          allowances: Number(allowances || 0),
+          deductions: Number(deductions || 0),
+          status: payrollStatus,
+          paid_on: payrollStatus === "paid" ? todayDate() : null,
+          notes: payrollNotes || null,
+          created_by: currentUserId,
+        },
+        { onConflict: "staff_profile_id,payroll_month" },
+      );
+
+      if (error) throw error;
+      toast({ title: "Salary record saved", description: "Payroll is updated for the selected staff member." });
+      setBaseSalary("");
+      setAllowances("");
+      setDeductions("");
+      setPayrollNotes("");
+      setPayrollStatus("draft");
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Salary not saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingPayroll(false);
+    }
+  };
+
+  const downloadPayslip = (item: SalaryPayroll) => {
+    const staffName = item.profiles?.full_name || "Staff member";
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text("Salary Payslip", 20, 24);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Staff: ${staffName}`, 20, 42);
+    doc.text(`Phone: ${item.profiles?.phone || "-"}`, 20, 50);
+    doc.text(`Month: ${format(new Date(item.payroll_month), "MMMM yyyy")}`, 20, 58);
+    doc.text(`Status: ${payrollStatusLabels[item.status]}`, 20, 66);
+    doc.line(20, 76, 190, 76);
+    doc.text(`Base salary: ${formatCurrency(item.base_salary)}`, 24, 90);
+    doc.text(`Allowances: ${formatCurrency(item.allowances)}`, 24, 102);
+    doc.text(`Deductions: ${formatCurrency(item.deductions)}`, 24, 114);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Net salary: ${formatCurrency(item.net_salary)}`, 24, 130);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Paid on: ${item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"}`, 24, 144);
+    if (item.notes) doc.text(`Notes: ${item.notes}`, 24, 158, { maxWidth: 160 });
+    doc.save(`payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`);
+  };
+
   if (sessionLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
   }
@@ -996,6 +1118,7 @@ export const AttendanceDashboard = () => {
                 <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5">Attendance</TabsTrigger>
                 <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5">Excel & Sheets</TabsTrigger>
                 <TabsTrigger value="results" className="rounded-xl px-4 py-2.5">Results</TabsTrigger>
+                <TabsTrigger value="salary" className="rounded-xl px-4 py-2.5">Salary</TabsTrigger>
                 <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5">Analytics</TabsTrigger>
               </TabsList>
 
@@ -1255,6 +1378,108 @@ export const AttendanceDashboard = () => {
                       ))
                     ) : (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Result uploads will appear here.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
+                    <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Month total</p>
+                        <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(payrollOverview.total)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-success/30 bg-success-soft p-4 text-success">
+                        <p className="text-xs uppercase tracking-[0.16em]">Paid</p>
+                        <p className="mt-2 text-xl font-semibold">{payrollOverview.paid}</p>
+                      </div>
+                      <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-warning">
+                        <p className="text-xs uppercase tracking-[0.16em]">Pending</p>
+                        <p className="mt-2 text-xl font-semibold">{payrollOverview.pending}</p>
+                      </div>
+                    </div>
+
+                    {isAdmin ? (
+                      <form className="space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4" onSubmit={handlePayrollSubmit}>
+                        <div className="space-y-2">
+                          <Label htmlFor="payrollStaff">Staff member</Label>
+                          <Select value={payrollStaffId} onValueChange={setPayrollStaffId}>
+                            <SelectTrigger id="payrollStaff" className="bg-background/80"><SelectValue placeholder="Choose staff" /></SelectTrigger>
+                            <SelectContent>
+                              {staffProfiles.map((staff) => (
+                                <SelectItem key={staff.id} value={staff.id}>{staff.full_name || staff.phone || "Staff account"}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="payrollMonth">Payroll month</Label>
+                            <Input id="payrollMonth" type="month" value={payrollMonth.slice(0, 7)} onChange={(e) => setPayrollMonth(`${e.target.value}-01`)} className="bg-background/80" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="payrollStatus">Status</Label>
+                            <Select value={payrollStatus} onValueChange={(value) => setPayrollStatus(value as PayrollStatus)}>
+                              <SelectTrigger id="payrollStatus" className="bg-background/80"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(payrollStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <Input type="number" min="0" step="1" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} placeholder="Base salary" className="bg-background/80" required />
+                          <Input type="number" min="0" step="1" value={allowances} onChange={(e) => setAllowances(e.target.value)} placeholder="Allowances" className="bg-background/80" />
+                          <Input type="number" min="0" step="1" value={deductions} onChange={(e) => setDeductions(e.target.value)} placeholder="Deductions" className="bg-background/80" />
+                        </div>
+                        <Input value={payrollNotes} onChange={(e) => setPayrollNotes(e.target.value)} placeholder="Notes, bonus, advance, or payment reference" className="bg-background/80" />
+                        <Button type="submit" className="w-full" disabled={savingPayroll || !payrollStaffId}>
+                          <IndianRupee className="h-4 w-4" />
+                          {savingPayroll ? "Saving salary..." : "Save salary record"}
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 text-sm text-muted-foreground">Only Admin can create or edit salary records. Staff can download their own payslips.</div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Payroll ledger</CardTitle>
+                    <CardDescription>Monthly salary status with one-click payslip PDF.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {payroll.length ? (
+                      payroll.map((item) => (
+                        <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold text-foreground">{item.profiles?.full_name || "Staff member"}</p>
+                              <p className="text-sm text-muted-foreground">{format(new Date(item.payroll_month), "MMMM yyyy")} · {item.profiles?.phone || "Phone pending"}</p>
+                            </div>
+                            <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", toneStyles[payrollTone[item.status]])}>{payrollStatusLabels[item.status]}</span>
+                          </div>
+                          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-4">
+                            <span className="text-muted-foreground">Base {formatCurrency(item.base_salary)}</span>
+                            <span className="text-muted-foreground">Allow {formatCurrency(item.allowances)}</span>
+                            <span className="text-muted-foreground">Deduct {formatCurrency(item.deductions)}</span>
+                            <span className="font-semibold text-foreground">Net {formatCurrency(item.net_salary)}</span>
+                          </div>
+                          <Button variant="outline" size="sm" className="mt-4" onClick={() => downloadPayslip(item)}>
+                            <Download className="h-4 w-4" />
+                            Download payslip
+                          </Button>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Salary records will appear here after Admin saves payroll.</div>
                     )}
                   </CardContent>
                 </Card>
