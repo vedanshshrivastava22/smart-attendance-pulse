@@ -1110,12 +1110,12 @@ export const AttendanceDashboard = () => {
         <section className="grid gap-6 xl:grid-cols-[1.4fr,0.6fr]">
           <div className="space-y-6">
             <Tabs defaultValue="attendance" className="space-y-6">
-              <TabsList className="h-auto w-full justify-start gap-2 rounded-2xl border border-border/70 bg-panel/80 p-2">
-                <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5">Attendance</TabsTrigger>
-                <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5">Excel & Sheets</TabsTrigger>
-                <TabsTrigger value="results" className="rounded-xl px-4 py-2.5">Results</TabsTrigger>
-                <TabsTrigger value="salary" className="rounded-xl px-4 py-2.5">Salary</TabsTrigger>
-                <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5">Analytics</TabsTrigger>
+              <TabsList className="flex h-auto w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border border-border/70 bg-panel/80 p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <TabsTrigger value="attendance" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Attendance</TabsTrigger>
+                <TabsTrigger value="imports" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Excel & Sheets</TabsTrigger>
+                <TabsTrigger value="results" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Results</TabsTrigger>
+                <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>
+                <TabsTrigger value="analytics" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Analytics</TabsTrigger>
               </TabsList>
 
               <TabsContent value="attendance" className="grid gap-6 xl:grid-cols-[1.35fr,0.95fr]">
