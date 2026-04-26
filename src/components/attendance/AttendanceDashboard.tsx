@@ -599,6 +599,25 @@ export const AttendanceDashboard = () => {
     setSavingStudentId(null);
   };
 
+  const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
+    const status = attendanceDrafts[student.id] ?? "present";
+    const message = buildAttendanceMessage({
+      studentName: student.full_name,
+      parentName: student.parent_name,
+      classLabel,
+      date: format(new Date(selectedDate), "dd MMM yyyy"),
+      status,
+      language: messageLanguage,
+    });
+    const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
+    if (!raw) {
+      toast({ title: "No WhatsApp number", description: "Add a parent or WhatsApp phone for this student first.", variant: "destructive" });
+      return;
+    }
+    const phone = raw.length === 10 ? `91${raw}` : raw;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
+
   const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
     if (!selectedClassId) return;
     const path = `${selectedClassId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
