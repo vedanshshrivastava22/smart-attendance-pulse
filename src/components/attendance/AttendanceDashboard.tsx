@@ -599,6 +599,105 @@ export const AttendanceDashboard = () => {
     setSavingStudentId(null);
   };
 
+  const saveAllAttendance = async () => {
+    if (!selectedClassId || !filteredStudents.length) return;
+    setSavingStudentId("__bulk__");
+    let success = 0;
+    let failed = 0;
+    for (const student of filteredStudents) {
+      const status = attendanceDrafts[student.id] ?? "present";
+      const message = buildAttendanceMessage({
+        studentName: student.full_name,
+        parentName: student.parent_name,
+        classLabel,
+        date: format(new Date(selectedDate), "dd MMM yyyy"),
+        status,
+        language: messageLanguage,
+      });
+      const { data: record, error } = await supabase
+        .from("attendance_records")
+        .upsert(
+          {
+            student_id: student.id,
+            class_id: selectedClassId,
+            attendance_date: selectedDate,
+            status,
+            notes: sendMode === "manual" ? "Pending manual review" : null,
+          },
+          { onConflict: "student_id,attendance_date" },
+        )
+        .select()
+        .single();
+      if (error || !record) {
+        failed += 1;
+        continue;
+      }
+      await supabase.from("notification_events").insert({
+        student_id: student.id,
+        attendance_record_id: record.id,
+        class_id: selectedClassId,
+        report_date: selectedDate,
+        notification_type: "attendance",
+        send_mode: sendMode,
+        message_language: messageLanguage,
+        recipient_phone: student.whatsapp_phone || student.parent_phone,
+        message_body: message,
+        delivery_status: sendMode === "auto" ? "sent" : "pending",
+        sent_at: sendMode === "auto" ? new Date().toISOString() : null,
+        provider_response: sendMode === "auto" ? { mode: "demo" } : { mode: "manual_review" },
+        summary: {},
+      });
+      success += 1;
+    }
+    setSavingStudentId(null);
+    toast({
+      title: `Bulk save complete`,
+      description: `${success} marked, ${failed} failed for ${classLabel}.`,
+      variant: failed ? "destructive" : "default",
+    });
+    await refreshAll();
+  };
+
+  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
+    if (!filteredStudents.length) return;
+    const targets = filteredStudents.filter((student) => {
+      const status = attendanceDrafts[student.id] ?? "present";
+      return filterStatus ? status === filterStatus : true;
+    });
+    if (!targets.length) {
+      toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
+      return;
+    }
+    let opened = 0;
+    let skipped = 0;
+    targets.forEach((student, idx) => {
+      const status = attendanceDrafts[student.id] ?? "present";
+      const message = buildAttendanceMessage({
+        studentName: student.full_name,
+        parentName: student.parent_name,
+        classLabel,
+        date: format(new Date(selectedDate), "dd MMM yyyy"),
+        status,
+        language: messageLanguage,
+      });
+      const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
+      if (!raw) {
+        skipped += 1;
+        return;
+      }
+      const phone = raw.length === 10 ? `91${raw}` : raw;
+      // Stagger so the browser doesn't block popups
+      setTimeout(() => {
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      }, idx * 350);
+      opened += 1;
+    });
+    toast({
+      title: `Opening WhatsApp for ${opened} parent${opened === 1 ? "" : "s"}`,
+      description: skipped ? `${skipped} skipped (no phone). Allow popups for this site.` : "Allow popups so every chat can open.",
+    });
+  };
+
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const status = attendanceDrafts[student.id] ?? "present";
     const message = buildAttendanceMessage({
@@ -1202,11 +1301,35 @@ export const AttendanceDashboard = () => {
                   <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <CardTitle className="font-display text-2xl">Teacher panel</CardTitle>
-                      <CardDescription>Mark present, absent, leave, or holiday and queue the parent message in one step.</CardDescription>
+                      <CardDescription>Mark present, absent, leave, or holiday — then save all and send WhatsApp to every parent in one click.</CardDescription>
                     </div>
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/60 p-3">
+                      <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !filteredStudents.length}>
+                        <Send className="h-4 w-4" />
+                        {savingStudentId === "__bulk__" ? "Saving all..." : `Save all (${filteredStudents.length})`}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!filteredStudents.length}>
+                        <MessageCircle className="h-4 w-4" />
+                        Send WhatsApp to all
+                      </Button>
+                      <div className="ml-auto flex flex-wrap gap-1.5">
+                        {attendanceStatuses.map((status) => (
+                          <Button
+                            key={status}
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
+                            onClick={() => sendBulkWhatsApp(status)}
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            Only {attendanceLabels[status].toLowerCase()}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                     {loading ? (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Loading roster…</div>
                     ) : filteredStudents.length ? (
