@@ -50,18 +50,53 @@ export const buildAttendanceMessage = ({
 }) => {
   const guardian = parentName?.trim() || "Parent";
 
+  const statusEmoji: Record<AttendanceStatus, string> = {
+    present: "✅",
+    absent: "❌",
+    leave: "📝",
+    holiday: "🏖️",
+  };
+
   if (language === "hindi") {
     const hindiStatus: Record<AttendanceStatus, string> = {
       present: "उपस्थित",
       absent: "अनुपस्थित",
-      leave: "अवकाश",
+      leave: "अवकाश पर",
       holiday: "अवकाश दिवस",
     };
-
-    return `नमस्ते ${guardian}, ${date} को ${classLabel} के छात्र ${studentName} की उपस्थिति स्थिति ${hindiStatus[status]} दर्ज की गई है।`;
+    const hindiAction: Record<AttendanceStatus, string> = {
+      present: "नियमित उपस्थिति के लिए धन्यवाद। 🙏",
+      absent: "कृपया अनुपस्थिति का कारण कक्षा शिक्षक को सूचित करें।",
+      leave: "स्वीकृत अवकाश के रूप में दर्ज किया गया है।",
+      holiday: "आज विद्यालय अवकाश है।",
+    };
+    return [
+      `नमस्ते ${guardian} जी,`,
+      ``,
+      `${statusEmoji[status]} ${studentName} (${classLabel}) की ${date} की उपस्थिति: *${hindiStatus[status]}*`,
+      ``,
+      hindiAction[status],
+      ``,
+      `— विद्यालय उपस्थिति प्रणाली`,
+    ].join("\n");
   }
 
-  return `Hello ${guardian}, attendance for ${studentName} (${classLabel}) on ${date} has been marked as ${attendanceLabels[status]}.`;
+  const englishAction: Record<AttendanceStatus, string> = {
+    present: "Thank you for ensuring regular attendance. 🙏",
+    absent: "Please share the reason for absence with the class teacher.",
+    leave: "Marked as approved leave.",
+    holiday: "School is closed today.",
+  };
+
+  return [
+    `Hello ${guardian},`,
+    ``,
+    `${statusEmoji[status]} Attendance update for *${studentName}* (${classLabel}) on ${date}: *${attendanceLabels[status]}*`,
+    ``,
+    englishAction[status],
+    ``,
+    `— School Attendance System`,
+  ].join("\n");
 };
 
 export const buildResultMessage = ({
