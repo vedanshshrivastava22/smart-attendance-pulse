@@ -599,6 +599,105 @@ export const AttendanceDashboard = () => {
     setSavingStudentId(null);
   };
 
+  const saveAllAttendance = async () => {
+    if (!selectedClassId || !filteredStudents.length) return;
+    setSavingStudentId("__bulk__");
+    let success = 0;
+    let failed = 0;
+    for (const student of filteredStudents) {
+      const status = attendanceDrafts[student.id] ?? "present";
+      const message = buildAttendanceMessage({
+        studentName: student.full_name,
+        parentName: student.parent_name,
+        classLabel,
+        date: format(new Date(selectedDate), "dd MMM yyyy"),
+        status,
+        language: messageLanguage,
+      });
+      const { data: record, error } = await supabase
+        .from("attendance_records")
+        .upsert(
+          {
+            student_id: student.id,
+            class_id: selectedClassId,
+            attendance_date: selectedDate,
+            status,
+            notes: sendMode === "manual" ? "Pending manual review" : null,
+          },
+          { onConflict: "student_id,attendance_date" },
+        )
+        .select()
+        .single();
+      if (error || !record) {
+        failed += 1;
+        continue;
+      }
+      await supabase.from("notification_events").insert({
+        student_id: student.id,
+        attendance_record_id: record.id,
+        class_id: selectedClassId,
+        report_date: selectedDate,
+        notification_type: "attendance",
+        send_mode: sendMode,
+        message_language: messageLanguage,
+        recipient_phone: student.whatsapp_phone || student.parent_phone,
+        message_body: message,
+        delivery_status: sendMode === "auto" ? "sent" : "pending",
+        sent_at: sendMode === "auto" ? new Date().toISOString() : null,
+        provider_response: sendMode === "auto" ? { mode: "demo" } : { mode: "manual_review" },
+        summary: {},
+      });
+      success += 1;
+    }
+    setSavingStudentId(null);
+    toast({
+      title: `Bulk save complete`,
+      description: `${success} marked, ${failed} failed for ${classLabel}.`,
+      variant: failed ? "destructive" : "default",
+    });
+    await refreshAll();
+  };
+
+  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
+    if (!filteredStudents.length) return;
+    const targets = filteredStudents.filter((student) => {
+      const status = attendanceDrafts[student.id] ?? "present";
+      return filterStatus ? status === filterStatus : true;
+    });
+    if (!targets.length) {
+      toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
+      return;
+    }
+    let opened = 0;
+    let skipped = 0;
+    targets.forEach((student, idx) => {
+      const status = attendanceDrafts[student.id] ?? "present";
+      const message = buildAttendanceMessage({
+        studentName: student.full_name,
+        parentName: student.parent_name,
+        classLabel,
+        date: format(new Date(selectedDate), "dd MMM yyyy"),
+        status,
+        language: messageLanguage,
+      });
+      const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
+      if (!raw) {
+        skipped += 1;
+        return;
+      }
+      const phone = raw.length === 10 ? `91${raw}` : raw;
+      // Stagger so the browser doesn't block popups
+      setTimeout(() => {
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      }, idx * 350);
+      opened += 1;
+    });
+    toast({
+      title: `Opening WhatsApp for ${opened} parent${opened === 1 ? "" : "s"}`,
+      description: skipped ? `${skipped} skipped (no phone). Allow popups for this site.` : "Allow popups so every chat can open.",
+    });
+  };
+
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const status = attendanceDrafts[student.id] ?? "present";
     const message = buildAttendanceMessage({
