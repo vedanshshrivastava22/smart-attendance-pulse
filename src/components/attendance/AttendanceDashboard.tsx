@@ -1033,7 +1033,6 @@ export const AttendanceDashboard = () => {
                     Attendance Command Center
                   </div>
                   <div className="space-y-2">
-                    <CardTitle className="max-w-3xl font-display text-4xl leading-tight sm:text-5xl">Beautiful attendance tracking with Excel import, results, daily reports, and login-based control.</CardTitle>
                     <CardDescription className="max-w-2xl text-base leading-7 text-muted-foreground">
                       Signed in as {profile?.full_name || "Staff"} · {roles.map((role) => roleLabels[role]).join(", ") || "Teacher"}
                     </CardDescription>
