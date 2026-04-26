@@ -1528,10 +1528,24 @@ export const AttendanceDashboard = () => {
                             <span className="text-muted-foreground">Deduct {formatCurrency(item.deductions)}</span>
                             <span className="font-semibold text-foreground">Net {formatCurrency(item.net_salary)}</span>
                           </div>
-                          <Button variant="outline" size="sm" className="mt-4" onClick={() => downloadPayslip(item)}>
-                            <Download className="h-4 w-4" />
-                            Download payslip
-                          </Button>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadPayslip(item)}>
+                              <Download className="h-4 w-4" />
+                              Download
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => editPayrollEntry(item)}>
+                              <UserCog className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => sharePayslipWhatsApp(item)}>
+                              <MessageCircle className="h-4 w-4" />
+                              WhatsApp
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => sharePayslipEmail(item)}>
+                              <Send className="h-4 w-4" />
+                              Email
+                            </Button>
+                          </div>
                         </motion.div>
                       ))
                     ) : (
