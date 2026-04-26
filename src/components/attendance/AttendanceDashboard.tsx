@@ -229,15 +229,15 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     .filter((row) => row.full_name && row.roll_number);
 
 const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
-  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-    <Card className="border-border/70 bg-card/85 shadow-[var(--shadow-soft)] backdrop-blur-sm">
-      <CardContent className="flex items-start justify-between p-5">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-          <p className="text-3xl font-semibold text-foreground">{value}</p>
-          <p className="text-sm text-muted-foreground">{hint}</p>
+  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} whileHover={{ y: -3 }}>
+    <Card className="h-full border-border/60 bg-card/90 shadow-[var(--shadow-soft)] backdrop-blur-sm transition-shadow hover:shadow-[var(--shadow-elevated)]">
+      <CardContent className="flex items-start justify-between gap-3 p-4 sm:p-5">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
+          <p className="text-2xl font-semibold text-foreground sm:text-3xl">{value}</p>
+          <p className="text-xs text-muted-foreground sm:text-sm">{hint}</p>
         </div>
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/80 text-accent-foreground shadow-[var(--shadow-soft)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/80 text-accent-foreground shadow-[var(--shadow-soft)] sm:h-11 sm:w-11">
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>
