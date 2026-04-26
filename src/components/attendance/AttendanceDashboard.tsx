@@ -890,7 +890,7 @@ export const AttendanceDashboard = () => {
     }
   };
 
-  const downloadPayslip = (item: SalaryPayroll) => {
+  const buildPayslipDoc = (item: SalaryPayroll) => {
     const staffName = item.profiles?.full_name || "Staff member";
     const doc = new jsPDF();
     doc.setFont("helvetica", "bold");
@@ -911,8 +911,68 @@ export const AttendanceDashboard = () => {
     doc.setFont("helvetica", "normal");
     doc.text(`Paid on: ${item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"}`, 24, 144);
     if (item.notes) doc.text(`Notes: ${item.notes}`, 24, 158, { maxWidth: 160 });
-    doc.save(`payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`);
+    const fileName = `payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`;
+    return { doc, fileName, staffName };
   };
+
+  const downloadPayslip = (item: SalaryPayroll) => {
+    const { doc, fileName } = buildPayslipDoc(item);
+    doc.save(fileName);
+  };
+
+  const buildPayslipMessage = (item: SalaryPayroll) => {
+    const staffName = item.profiles?.full_name || "Staff member";
+    const monthLabel = format(new Date(item.payroll_month), "MMMM yyyy");
+    return [
+      `Hello ${staffName},`,
+      ``,
+      `Here is your salary payslip for ${monthLabel}.`,
+      `Status: ${payrollStatusLabels[item.status]}`,
+      `Base: ${formatCurrency(item.base_salary)} | Allowances: ${formatCurrency(item.allowances)} | Deductions: ${formatCurrency(item.deductions)}`,
+      `Net salary: ${formatCurrency(item.net_salary)}`,
+      item.paid_on ? `Paid on: ${format(new Date(item.paid_on), "dd MMM yyyy")}` : `Payment status: Pending`,
+      ``,
+      `The PDF payslip has been downloaded — please attach it from your device when forwarding.`,
+    ].join("\n");
+  };
+
+  const sharePayslipWhatsApp = (item: SalaryPayroll) => {
+    const { doc, fileName } = buildPayslipDoc(item);
+    doc.save(fileName);
+    const phoneRaw = (item.profiles?.phone || "").replace(/[^\d]/g, "");
+    if (!phoneRaw) {
+      toast({ title: "No phone on file", description: "Add a phone number to this staff profile to share via WhatsApp.", variant: "destructive" });
+      return;
+    }
+    const phone = phoneRaw.length === 10 ? `91${phoneRaw}` : phoneRaw;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(buildPayslipMessage(item))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    toast({ title: "Payslip ready", description: "PDF downloaded — attach it inside WhatsApp to send to the staff member." });
+  };
+
+  const sharePayslipEmail = (item: SalaryPayroll) => {
+    const { doc, fileName } = buildPayslipDoc(item);
+    doc.save(fileName);
+    const email = window.prompt(`Enter email address to send the payslip to ${item.profiles?.full_name || "staff member"}:`, "");
+    if (!email) return;
+    const subject = `Salary Payslip — ${format(new Date(item.payroll_month), "MMMM yyyy")}`;
+    const url = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildPayslipMessage(item))}`;
+    window.location.href = url;
+    toast({ title: "Payslip ready", description: "PDF downloaded — attach it in your email client before sending." });
+  };
+
+  const editPayrollEntry = (item: SalaryPayroll) => {
+    setPayrollStaffId(item.staff_profile_id);
+    setPayrollMonth(item.payroll_month);
+    setBaseSalary(String(item.base_salary ?? ""));
+    setAllowances(String(item.allowances ?? ""));
+    setDeductions(String(item.deductions ?? ""));
+    setPayrollStatus(item.status);
+    setPayrollNotes(item.notes ?? "");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    toast({ title: "Editing payslip", description: "Update the values and save to overwrite this record." });
+  };
+
 
   if (sessionLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
@@ -1114,7 +1174,7 @@ export const AttendanceDashboard = () => {
                 <TabsTrigger value="attendance" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Attendance</TabsTrigger>
                 <TabsTrigger value="imports" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Excel & Sheets</TabsTrigger>
                 <TabsTrigger value="results" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Results</TabsTrigger>
-                <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>
+                {isAdmin && <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>}
                 <TabsTrigger value="analytics" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Analytics</TabsTrigger>
               </TabsList>
 
@@ -1379,7 +1439,7 @@ export const AttendanceDashboard = () => {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+              {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader>
                     <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
@@ -1468,10 +1528,24 @@ export const AttendanceDashboard = () => {
                             <span className="text-muted-foreground">Deduct {formatCurrency(item.deductions)}</span>
                             <span className="font-semibold text-foreground">Net {formatCurrency(item.net_salary)}</span>
                           </div>
-                          <Button variant="outline" size="sm" className="mt-4" onClick={() => downloadPayslip(item)}>
-                            <Download className="h-4 w-4" />
-                            Download payslip
-                          </Button>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadPayslip(item)}>
+                              <Download className="h-4 w-4" />
+                              Download
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => editPayrollEntry(item)}>
+                              <UserCog className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => sharePayslipWhatsApp(item)}>
+                              <MessageCircle className="h-4 w-4" />
+                              WhatsApp
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => sharePayslipEmail(item)}>
+                              <Send className="h-4 w-4" />
+                              Email
+                            </Button>
+                          </div>
                         </motion.div>
                       ))
                     ) : (
@@ -1479,7 +1553,7 @@ export const AttendanceDashboard = () => {
                     )}
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </TabsContent>}
 
               <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
