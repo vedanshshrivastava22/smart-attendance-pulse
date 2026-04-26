@@ -929,9 +929,6 @@ export const AttendanceDashboard = () => {
               <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Attendance + Results + Reports</Badge>
               <div className="space-y-4">
                 <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
-                <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-                  Sign in with just your <strong>phone number</strong> and password. Manage Classes 9–12 attendance, Excel imports, results, and daily WhatsApp summaries — all from one beautiful dashboard.
-                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
