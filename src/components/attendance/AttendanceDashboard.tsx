@@ -1379,7 +1379,7 @@ export const AttendanceDashboard = () => {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+              {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader>
                     <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
@@ -1479,7 +1479,7 @@ export const AttendanceDashboard = () => {
                     )}
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </TabsContent>}
 
               <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
