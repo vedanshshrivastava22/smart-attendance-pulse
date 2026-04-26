@@ -229,15 +229,15 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     .filter((row) => row.full_name && row.roll_number);
 
 const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
-  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-    <Card className="border-border/70 bg-card/85 shadow-[var(--shadow-soft)] backdrop-blur-sm">
-      <CardContent className="flex items-start justify-between p-5">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-          <p className="text-3xl font-semibold text-foreground">{value}</p>
-          <p className="text-sm text-muted-foreground">{hint}</p>
+  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} whileHover={{ y: -3 }}>
+    <Card className="h-full border-border/60 bg-card/90 shadow-[var(--shadow-soft)] backdrop-blur-sm transition-shadow hover:shadow-[var(--shadow-elevated)]">
+      <CardContent className="flex items-start justify-between gap-3 p-4 sm:p-5">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
+          <p className="text-2xl font-semibold text-foreground sm:text-3xl">{value}</p>
+          <p className="text-xs text-muted-foreground sm:text-sm">{hint}</p>
         </div>
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/80 text-accent-foreground shadow-[var(--shadow-soft)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/80 text-accent-foreground shadow-[var(--shadow-soft)] sm:h-11 sm:w-11">
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>
@@ -929,9 +929,6 @@ export const AttendanceDashboard = () => {
               <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Attendance + Results + Reports</Badge>
               <div className="space-y-4">
                 <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
-                <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-                  Sign in with just your <strong>phone number</strong> and password. Manage Classes 9–12 attendance, Excel imports, results, and daily WhatsApp summaries — all from one beautiful dashboard.
-                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
@@ -1039,16 +1036,16 @@ export const AttendanceDashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
                   {isAdmin && (
-                    <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as ActivePanel)}>
-                      <TabsList className="rounded-2xl border border-border/70 bg-background/70 p-1.5">
-                        <TabsTrigger value="teacher" className="rounded-xl px-4 py-2"><UserSquare2 className="mr-2 h-4 w-4" />Teacher</TabsTrigger>
-                        <TabsTrigger value="admin" className="rounded-xl px-4 py-2"><ShieldCheck className="mr-2 h-4 w-4" />Admin</TabsTrigger>
+                    <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as ActivePanel)} className="flex-1 sm:flex-none">
+                      <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/70 p-1.5 sm:w-auto sm:inline-flex">
+                        <TabsTrigger value="teacher" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><UserSquare2 className="mr-1.5 h-4 w-4" />Teacher</TabsTrigger>
+                        <TabsTrigger value="admin" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><ShieldCheck className="mr-1.5 h-4 w-4" />Admin</TabsTrigger>
                       </TabsList>
                     </Tabs>
                   )}
-                  <Button variant="outline" onClick={() => void handleLogout()}>
+                  <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="sm:size-default">
                     <LogOut className="h-4 w-4" />
                     Logout
                   </Button>
@@ -1113,12 +1110,12 @@ export const AttendanceDashboard = () => {
         <section className="grid gap-6 xl:grid-cols-[1.4fr,0.6fr]">
           <div className="space-y-6">
             <Tabs defaultValue="attendance" className="space-y-6">
-              <TabsList className="h-auto w-full justify-start gap-2 rounded-2xl border border-border/70 bg-panel/80 p-2">
-                <TabsTrigger value="attendance" className="rounded-xl px-4 py-2.5">Attendance</TabsTrigger>
-                <TabsTrigger value="imports" className="rounded-xl px-4 py-2.5">Excel & Sheets</TabsTrigger>
-                <TabsTrigger value="results" className="rounded-xl px-4 py-2.5">Results</TabsTrigger>
-                <TabsTrigger value="salary" className="rounded-xl px-4 py-2.5">Salary</TabsTrigger>
-                <TabsTrigger value="analytics" className="rounded-xl px-4 py-2.5">Analytics</TabsTrigger>
+              <TabsList className="flex h-auto w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border border-border/70 bg-panel/80 p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <TabsTrigger value="attendance" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Attendance</TabsTrigger>
+                <TabsTrigger value="imports" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Excel & Sheets</TabsTrigger>
+                <TabsTrigger value="results" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Results</TabsTrigger>
+                <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>
+                <TabsTrigger value="analytics" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Analytics</TabsTrigger>
               </TabsList>
 
               <TabsContent value="attendance" className="grid gap-6 xl:grid-cols-[1.35fr,0.95fr]">
