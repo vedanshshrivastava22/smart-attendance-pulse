@@ -1036,16 +1036,16 @@ export const AttendanceDashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
                   {isAdmin && (
-                    <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as ActivePanel)}>
-                      <TabsList className="rounded-2xl border border-border/70 bg-background/70 p-1.5">
-                        <TabsTrigger value="teacher" className="rounded-xl px-4 py-2"><UserSquare2 className="mr-2 h-4 w-4" />Teacher</TabsTrigger>
-                        <TabsTrigger value="admin" className="rounded-xl px-4 py-2"><ShieldCheck className="mr-2 h-4 w-4" />Admin</TabsTrigger>
+                    <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as ActivePanel)} className="flex-1 sm:flex-none">
+                      <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/70 p-1.5 sm:w-auto sm:inline-flex">
+                        <TabsTrigger value="teacher" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><UserSquare2 className="mr-1.5 h-4 w-4" />Teacher</TabsTrigger>
+                        <TabsTrigger value="admin" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><ShieldCheck className="mr-1.5 h-4 w-4" />Admin</TabsTrigger>
                       </TabsList>
                     </Tabs>
                   )}
-                  <Button variant="outline" onClick={() => void handleLogout()}>
+                  <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="sm:size-default">
                     <LogOut className="h-4 w-4" />
                     Logout
                   </Button>
