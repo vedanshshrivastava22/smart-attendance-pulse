@@ -37,6 +37,7 @@ import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  openWhatsApp,
   buildDailyReportMessage,
   buildResultMessage,
   classOptions,
@@ -714,7 +715,7 @@ export const AttendanceDashboard = () => {
       const phone = raw.length === 10 ? `91${raw}` : raw;
       // Stagger so the browser doesn't block popups
       setTimeout(() => {
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+        openWhatsApp(phone, message);
       }, idx * 350);
       opened += 1;
     });
@@ -741,7 +742,7 @@ export const AttendanceDashboard = () => {
       return;
     }
     const phone = raw.length === 10 ? `91${raw}` : raw;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    openWhatsApp(phone, message);
   };
 
   const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
@@ -1090,8 +1091,7 @@ export const AttendanceDashboard = () => {
       return;
     }
     const phone = phoneRaw.length === 10 ? `91${phoneRaw}` : phoneRaw;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(buildPayslipMessage(item))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    openWhatsApp(phone, buildPayslipMessage(item));
     toast({ title: "Payslip ready", description: "PDF downloaded — attach it inside WhatsApp to send to the staff member." });
   };
 

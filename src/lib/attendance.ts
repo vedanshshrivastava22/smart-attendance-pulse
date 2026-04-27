@@ -150,6 +150,30 @@ export const buildDailyReportMessage = ({
   return `Daily attendance report for ${classLabel} on ${date}: total ${total} students, present ${present}, absent ${absent}, leave ${leave}, holiday ${holiday}.`;
 };
 
+// Build a WhatsApp URL that avoids `api.whatsapp.com` (which is often blocked
+// by browsers, networks, or extensions). Uses the native app on mobile and
+// WhatsApp Web on desktop — same approach as AttendSync / similar tools.
+export const buildWhatsAppUrl = (phone: string, message: string) => {
+  const text = encodeURIComponent(message);
+  const cleanPhone = phone.replace(/[^\d]/g, "");
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  if (isMobile) {
+    // Native app deep link — opens WhatsApp directly on phones
+    return `whatsapp://send?phone=${cleanPhone}&text=${text}`;
+  }
+  // WhatsApp Web — never redirects through api.whatsapp.com
+  return `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${text}&type=phone_number&app_absent=0`;
+};
+
+export const openWhatsApp = (phone: string, message: string) => {
+  const url = buildWhatsAppUrl(phone, message);
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+};
+
 export const formatPercent = (value?: number | null) => `${Math.round(value ?? 0)}%`;
 
 export const todayDate = () => new Date().toISOString().slice(0, 10);
