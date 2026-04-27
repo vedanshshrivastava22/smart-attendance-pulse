@@ -902,6 +902,73 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  const handleExportTodayAttendance = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("attendance_records")
+        .select("*")
+        .eq("attendance_date", selectedDate);
+      if (error) throw error;
+
+      const records = data ?? [];
+      if (!records.length) {
+        toast({ title: "No attendance found", description: `No attendance records exist for ${selectedDate}.`, variant: "destructive" });
+        return;
+      }
+
+      const studentMap = new Map(students.map((s) => [s.id, s]));
+      const classMap = new Map(classes.map((c) => [c.id, c]));
+
+      const allRows = records.map((rec) => {
+        const stu = studentMap.get(rec.student_id);
+        const cls = classMap.get(rec.class_id);
+        return {
+          Class: cls ? `Class ${cls.class_name}${cls.section ? `-${cls.section}` : ""}` : "—",
+          Roll: stu?.roll_number ?? "",
+          Student: stu?.full_name ?? "",
+          Parent: stu?.parent_name ?? "",
+          Phone: stu?.whatsapp_phone || stu?.parent_phone || "",
+          Status: attendanceLabels[rec.status],
+          Date: rec.attendance_date,
+          Notes: rec.notes ?? "",
+        };
+      });
+
+      const wb = XLSX.utils.book_new();
+
+      // Summary sheet
+      const summaryByClass: Record<string, { Present: number; Absent: number; Leave: number; Holiday: number; Total: number }> = {};
+      records.forEach((rec) => {
+        const cls = classMap.get(rec.class_id);
+        const key = cls ? `Class ${cls.class_name}${cls.section ? `-${cls.section}` : ""}` : "Unknown";
+        if (!summaryByClass[key]) summaryByClass[key] = { Present: 0, Absent: 0, Leave: 0, Holiday: 0, Total: 0 };
+        summaryByClass[key][attendanceLabels[rec.status] as "Present" | "Absent" | "Leave" | "Holiday"] += 1;
+        summaryByClass[key].Total += 1;
+      });
+      const summaryRows = Object.entries(summaryByClass).map(([Class, v]) => ({ Class, ...v }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Summary");
+
+      // All records sheet
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), "All Records");
+
+      // One sheet per class
+      const grouped: Record<string, typeof allRows> = {};
+      allRows.forEach((row) => {
+        if (!grouped[row.Class]) grouped[row.Class] = [];
+        grouped[row.Class].push(row);
+      });
+      Object.entries(grouped).forEach(([cls, rows]) => {
+        const safe = cls.replace(/[\\/:*?[\]]/g, "_").slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), safe);
+      });
+
+      XLSX.writeFile(wb, `attendance_${selectedDate}.xlsx`);
+      toast({ title: "Excel exported", description: `${records.length} attendance records exported for ${selectedDate}.` });
+    } catch (error) {
+      toast({ title: "Export failed", description: error instanceof Error ? error.message : "Could not export attendance.", variant: "destructive" });
+    }
+  };
+
   const handleGoogleSheetLink = async () => {
     if (!sheetLink.trim() || !selectedClassId) return;
     const { error } = await supabase.from("excel_imports").insert({
