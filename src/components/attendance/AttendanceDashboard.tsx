@@ -40,6 +40,7 @@ import {
   buildDailyReportMessage,
   buildResultMessage,
   classOptions,
+  defaultMessageTemplates,
   formatPercent,
   languageLabels,
   languageOptions,
@@ -49,6 +50,7 @@ import {
   todayDate,
   type AttendanceStatus,
   type MessageLanguage,
+  type MessageTemplates,
   type NotificationSendMode,
 } from "@/lib/attendance";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +61,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 type SchoolClass = Database["public"]["Tables"]["school_classes"]["Row"];
 type Student = Database["public"]["Tables"]["students"]["Row"];
@@ -298,6 +301,26 @@ export const AttendanceDashboard = () => {
   const [deductions, setDeductions] = useState("");
   const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
   const [payrollNotes, setPayrollNotes] = useState("");
+
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
+    if (typeof window === "undefined") return defaultMessageTemplates;
+    try {
+      const saved = window.localStorage.getItem("attendance.messageTemplates");
+      if (saved) return { ...defaultMessageTemplates, ...JSON.parse(saved) };
+    } catch {
+      // ignore
+    }
+    return defaultMessageTemplates;
+  });
+  const [templateEditStatus, setTemplateEditStatus] = useState<AttendanceStatus>("absent");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("attendance.messageTemplates", JSON.stringify(messageTemplates));
+    } catch {
+      // ignore
+    }
+  }, [messageTemplates]);
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
@@ -549,6 +572,7 @@ export const AttendanceDashboard = () => {
       date: format(new Date(selectedDate), "dd MMM yyyy"),
       status,
       language: messageLanguage,
+      template: messageTemplates[messageLanguage][status],
     });
 
     setSavingStudentId(student.id);
@@ -613,6 +637,7 @@ export const AttendanceDashboard = () => {
         date: format(new Date(selectedDate), "dd MMM yyyy"),
         status,
         language: messageLanguage,
+        template: messageTemplates[messageLanguage][status],
       });
       const { data: record, error } = await supabase
         .from("attendance_records")
@@ -679,6 +704,7 @@ export const AttendanceDashboard = () => {
         date: format(new Date(selectedDate), "dd MMM yyyy"),
         status,
         language: messageLanguage,
+        template: messageTemplates[messageLanguage][status],
       });
       const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
       if (!raw) {
@@ -707,6 +733,7 @@ export const AttendanceDashboard = () => {
       date: format(new Date(selectedDate), "dd MMM yyyy"),
       status,
       language: messageLanguage,
+      template: messageTemplates[messageLanguage][status],
     });
     const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
     if (!raw) {
@@ -1104,7 +1131,7 @@ export const AttendanceDashboard = () => {
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
-              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Attendance + Results + Reports</Badge>
+              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Smart Attendance</Badge>
               <div className="space-y-4">
                 <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
               </div>
@@ -1405,7 +1432,10 @@ export const AttendanceDashboard = () => {
                         );
                       })
                     ) : (
-                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No students found. Import an Excel sheet to populate this class.</div>
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">No students in {classLabel} yet.</p>
+                        <p className="mt-1">Switch to the <span className="font-medium">Excel & Sheets</span> tab and import the roster for this class. Each class keeps its own students, attendance, and messages.</p>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -1445,6 +1475,75 @@ export const AttendanceDashboard = () => {
                         <MessageCircle className="h-4 w-4" />
                         {sendingDailyReport ? "Preparing report..." : activePanel === "admin" ? "Send daily report to staff" : "Admin panel required"}
                       </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
+                  <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <CardTitle className="font-display text-2xl">Parent message template</CardTitle>
+                      <CardDescription>
+                        Edit the WhatsApp message that goes to parents. Use placeholders <code className="rounded bg-muted px-1">{"{parent}"}</code>, <code className="rounded bg-muted px-1">{"{student}"}</code>, <code className="rounded bg-muted px-1">{"{class}"}</code>, <code className="rounded bg-muted px-1">{"{date}"}</code>, <code className="rounded bg-muted px-1">{"{status}"}</code>, <code className="rounded bg-muted px-1">{"{emoji}"}</code>. Changes are saved automatically for admins and teachers.
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={templateEditStatus} onValueChange={(value) => setTemplateEditStatus(value as AttendanceStatus)}>
+                        <SelectTrigger className="w-[140px] border-border/70 bg-muted/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {attendanceStatuses.map((status) => (
+                            <SelectItem key={status} value={status}>{attendanceLabels[status]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setMessageTemplates((prev) => ({
+                            ...prev,
+                            [messageLanguage]: {
+                              ...prev[messageLanguage],
+                              [templateEditStatus]: defaultMessageTemplates[messageLanguage][templateEditStatus],
+                            },
+                          }))
+                        }
+                      >
+                        Reset to default
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Template ({languageLabels[messageLanguage]} · {attendanceLabels[templateEditStatus]})</Label>
+                      <Textarea
+                        rows={10}
+                        value={messageTemplates[messageLanguage][templateEditStatus]}
+                        onChange={(e) =>
+                          setMessageTemplates((prev) => ({
+                            ...prev,
+                            [messageLanguage]: {
+                              ...prev[messageLanguage],
+                              [templateEditStatus]: e.target.value,
+                            },
+                          }))
+                        }
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Live preview</Label>
+                      <div className="whitespace-pre-wrap rounded-2xl border border-border/70 bg-background/70 p-4 text-sm leading-relaxed">
+                        {buildAttendanceMessage({
+                          studentName: filteredStudents[0]?.full_name ?? "Riya Sharma",
+                          parentName: filteredStudents[0]?.parent_name ?? "Parent",
+                          classLabel,
+                          date: format(new Date(selectedDate), "dd MMM yyyy"),
+                          status: templateEditStatus,
+                          language: messageLanguage,
+                          template: messageTemplates[messageLanguage][templateEditStatus],
+                        })}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

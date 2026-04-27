@@ -33,6 +33,46 @@ export const statusTone: Record<AttendanceStatus, string> = {
   holiday: "muted",
 };
 
+export const statusEmoji: Record<AttendanceStatus, string> = {
+  present: "✅",
+  absent: "❌",
+  leave: "📝",
+  holiday: "🏖️",
+};
+
+export const hindiStatusLabels: Record<AttendanceStatus, string> = {
+  present: "उपस्थित",
+  absent: "अनुपस्थित",
+  leave: "अवकाश पर",
+  holiday: "अवकाश दिवस",
+};
+
+// Default editable templates. Placeholders: {parent}, {student}, {class}, {date}, {status}, {emoji}
+export const defaultMessageTemplates: Record<MessageLanguage, Record<AttendanceStatus, string>> = {
+  english: {
+    present:
+      "Hello {parent},\n\n{emoji} Attendance update for *{student}* ({class}) on {date}: *{status}*\n\nThank you for ensuring regular attendance. 🙏\n\n— School Attendance System",
+    absent:
+      "Hello {parent},\n\n{emoji} Attendance update for *{student}* ({class}) on {date}: *{status}*\n\nPlease share the reason for absence with the class teacher.\n\n— School Attendance System",
+    leave:
+      "Hello {parent},\n\n{emoji} Attendance update for *{student}* ({class}) on {date}: *{status}*\n\nMarked as approved leave.\n\n— School Attendance System",
+    holiday:
+      "Hello {parent},\n\n{emoji} Attendance update for *{student}* ({class}) on {date}: *{status}*\n\nSchool is closed today.\n\n— School Attendance System",
+  },
+  hindi: {
+    present:
+      "नमस्ते {parent} जी,\n\n{emoji} {student} ({class}) की {date} की उपस्थिति: *{status}*\n\nनियमित उपस्थिति के लिए धन्यवाद। 🙏\n\n— विद्यालय उपस्थिति प्रणाली",
+    absent:
+      "नमस्ते {parent} जी,\n\n{emoji} {student} ({class}) की {date} की उपस्थिति: *{status}*\n\nकृपया अनुपस्थिति का कारण कक्षा शिक्षक को सूचित करें।\n\n— विद्यालय उपस्थिति प्रणाली",
+    leave:
+      "नमस्ते {parent} जी,\n\n{emoji} {student} ({class}) की {date} की उपस्थिति: *{status}*\n\nस्वीकृत अवकाश के रूप में दर्ज किया गया है।\n\n— विद्यालय उपस्थिति प्रणाली",
+    holiday:
+      "नमस्ते {parent} जी,\n\n{emoji} {student} ({class}) की {date} की उपस्थिति: *{status}*\n\nआज विद्यालय अवकाश है।\n\n— विद्यालय उपस्थिति प्रणाली",
+  },
+};
+
+export type MessageTemplates = typeof defaultMessageTemplates;
+
 export const buildAttendanceMessage = ({
   studentName,
   parentName,
@@ -40,6 +80,7 @@ export const buildAttendanceMessage = ({
   date,
   status,
   language,
+  template,
 }: {
   studentName: string;
   parentName?: string | null;
@@ -47,56 +88,18 @@ export const buildAttendanceMessage = ({
   date: string;
   status: AttendanceStatus;
   language: MessageLanguage;
+  template?: string;
 }) => {
-  const guardian = parentName?.trim() || "Parent";
-
-  const statusEmoji: Record<AttendanceStatus, string> = {
-    present: "✅",
-    absent: "❌",
-    leave: "📝",
-    holiday: "🏖️",
-  };
-
-  if (language === "hindi") {
-    const hindiStatus: Record<AttendanceStatus, string> = {
-      present: "उपस्थित",
-      absent: "अनुपस्थित",
-      leave: "अवकाश पर",
-      holiday: "अवकाश दिवस",
-    };
-    const hindiAction: Record<AttendanceStatus, string> = {
-      present: "नियमित उपस्थिति के लिए धन्यवाद। 🙏",
-      absent: "कृपया अनुपस्थिति का कारण कक्षा शिक्षक को सूचित करें।",
-      leave: "स्वीकृत अवकाश के रूप में दर्ज किया गया है।",
-      holiday: "आज विद्यालय अवकाश है।",
-    };
-    return [
-      `नमस्ते ${guardian} जी,`,
-      ``,
-      `${statusEmoji[status]} ${studentName} (${classLabel}) की ${date} की उपस्थिति: *${hindiStatus[status]}*`,
-      ``,
-      hindiAction[status],
-      ``,
-      `— विद्यालय उपस्थिति प्रणाली`,
-    ].join("\n");
-  }
-
-  const englishAction: Record<AttendanceStatus, string> = {
-    present: "Thank you for ensuring regular attendance. 🙏",
-    absent: "Please share the reason for absence with the class teacher.",
-    leave: "Marked as approved leave.",
-    holiday: "School is closed today.",
-  };
-
-  return [
-    `Hello ${guardian},`,
-    ``,
-    `${statusEmoji[status]} Attendance update for *${studentName}* (${classLabel}) on ${date}: *${attendanceLabels[status]}*`,
-    ``,
-    englishAction[status],
-    ``,
-    `— School Attendance System`,
-  ].join("\n");
+  const guardian = parentName?.trim() || (language === "hindi" ? "अभिभावक" : "Parent");
+  const tmpl = template ?? defaultMessageTemplates[language][status];
+  const statusLabel = language === "hindi" ? hindiStatusLabels[status] : attendanceLabels[status];
+  return tmpl
+    .replace(/\{parent\}/g, guardian)
+    .replace(/\{student\}/g, studentName)
+    .replace(/\{class\}/g, classLabel)
+    .replace(/\{date\}/g, date)
+    .replace(/\{status\}/g, statusLabel)
+    .replace(/\{emoji\}/g, statusEmoji[status]);
 };
 
 export const buildResultMessage = ({
