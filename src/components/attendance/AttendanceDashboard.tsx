@@ -771,6 +771,22 @@ export const AttendanceDashboard = () => {
     if (importError) throw importError;
   };
 
+  const resolveOrCreateClass = async (className: string): Promise<SchoolClass | null> => {
+    const cleaned = className.replace(/^class\s*/i, "").trim();
+    if (!cleaned) return null;
+    const existing = classes.find((c) => c.class_name.toLowerCase() === cleaned.toLowerCase());
+    if (existing) return existing;
+    const academicYear = new Date().getFullYear().toString();
+    const { data, error } = await supabase
+      .from("school_classes")
+      .insert({ class_name: cleaned, academic_year: academicYear })
+      .select()
+      .single();
+    if (error || !data) return null;
+    setClasses((prev) => [...prev, data]);
+    return data;
+  };
+
   const handleStudentExcelUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !selectedClassId || !selectedClass) return;
@@ -782,13 +798,31 @@ export const AttendanceDashboard = () => {
       const parsedRows = mapStudentRows(rows, selectedClass.class_name);
       setStudentImportPreview(parsedRows.slice(0, 6));
 
-      const existingStudents = students.filter((student) => student.class_id === selectedClassId);
-      const byRoll = new Map(existingStudents.map((student) => [student.roll_number.toLowerCase(), student]));
+      // Build a roll->student map across ALL classes so we can move/update by roll
+      const byRoll = new Map(students.map((student) => [`${student.class_id}::${student.roll_number.toLowerCase()}`, student]));
+      const classCache = new Map<string, string>(); // class_name(lower) -> class_id
+      classes.forEach((c) => classCache.set(c.class_name.toLowerCase(), c.id));
+
+      const classCounts: Record<string, number> = {};
 
       for (const row of parsedRows) {
-        const existing = byRoll.get(row.roll_number.toLowerCase());
+        // Resolve which class this row belongs to (from sheet's class column, falling back to selected)
+        const rawClassName = (row.class_name || selectedClass.class_name).replace(/^class\s*/i, "").trim();
+        let classId = classCache.get(rawClassName.toLowerCase());
+        if (!classId) {
+          const created = await resolveOrCreateClass(rawClassName);
+          if (created) {
+            classId = created.id;
+            classCache.set(created.class_name.toLowerCase(), created.id);
+          }
+        }
+        if (!classId) continue;
+
+        classCounts[rawClassName] = (classCounts[rawClassName] ?? 0) + 1;
+
+        const existing = byRoll.get(`${classId}::${row.roll_number.toLowerCase()}`);
         const payload = {
-          class_id: selectedClassId,
+          class_id: classId,
           full_name: row.full_name,
           roll_number: row.roll_number,
           parent_name: row.parent_name || null,
@@ -807,6 +841,11 @@ export const AttendanceDashboard = () => {
           const { error } = await supabase.from("students").insert(payload);
           if (error) throw error;
         }
+      }
+
+      const breakdown = Object.entries(classCounts).map(([k, v]) => `Class ${k}: ${v}`).join(" · ");
+      if (breakdown) {
+        toast({ title: "Multi-class import", description: breakdown });
       }
 
       await uploadImportFile(file, `${file.name} · Student master`, { type: "student_master", sheetName, parsedRows: parsedRows.length }, parsedRows.length);
