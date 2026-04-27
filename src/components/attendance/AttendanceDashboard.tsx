@@ -1432,7 +1432,10 @@ export const AttendanceDashboard = () => {
                         );
                       })
                     ) : (
-                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No students found. Import an Excel sheet to populate this class.</div>
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">No students in {classLabel} yet.</p>
+                        <p className="mt-1">Switch to the <span className="font-medium">Excel & Sheets</span> tab and import the roster for this class. Each class keeps its own students, attendance, and messages.</p>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
