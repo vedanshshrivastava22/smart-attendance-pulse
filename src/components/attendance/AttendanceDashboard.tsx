@@ -40,6 +40,7 @@ import {
   buildDailyReportMessage,
   buildResultMessage,
   classOptions,
+  defaultMessageTemplates,
   formatPercent,
   languageLabels,
   languageOptions,
@@ -49,6 +50,7 @@ import {
   todayDate,
   type AttendanceStatus,
   type MessageLanguage,
+  type MessageTemplates,
   type NotificationSendMode,
 } from "@/lib/attendance";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +61,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 type SchoolClass = Database["public"]["Tables"]["school_classes"]["Row"];
 type Student = Database["public"]["Tables"]["students"]["Row"];
