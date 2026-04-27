@@ -572,6 +572,7 @@ export const AttendanceDashboard = () => {
       date: format(new Date(selectedDate), "dd MMM yyyy"),
       status,
       language: messageLanguage,
+      template: messageTemplates[messageLanguage][status],
     });
 
     setSavingStudentId(student.id);
