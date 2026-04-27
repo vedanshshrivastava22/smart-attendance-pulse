@@ -1104,7 +1104,7 @@ export const AttendanceDashboard = () => {
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
-              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Attendance + Results + Reports</Badge>
+              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Smart Attendance</Badge>
               <div className="space-y-4">
                 <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
               </div>
