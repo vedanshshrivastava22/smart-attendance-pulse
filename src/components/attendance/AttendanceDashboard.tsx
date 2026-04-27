@@ -1448,6 +1448,10 @@ export const AttendanceDashboard = () => {
                         <MessageCircle className="h-4 w-4" />
                         Send WhatsApp to all
                       </Button>
+                      <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
+                        <Download className="h-4 w-4" />
+                        Export today's attendance
+                      </Button>
                       <div className="ml-auto flex flex-wrap gap-1.5">
                         {attendanceStatuses.map((status) => (
                           <Button
