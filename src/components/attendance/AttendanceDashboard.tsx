@@ -704,6 +704,7 @@ export const AttendanceDashboard = () => {
         date: format(new Date(selectedDate), "dd MMM yyyy"),
         status,
         language: messageLanguage,
+        template: messageTemplates[messageLanguage][status],
       });
       const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
       if (!raw) {
