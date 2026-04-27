@@ -94,12 +94,12 @@ export const buildAttendanceMessage = ({
   const tmpl = template ?? defaultMessageTemplates[language][status];
   const statusLabel = language === "hindi" ? hindiStatusLabels[status] : attendanceLabels[status];
   return tmpl
-    .replaceAll("{parent}", guardian)
-    .replaceAll("{student}", studentName)
-    .replaceAll("{class}", classLabel)
-    .replaceAll("{date}", date)
-    .replaceAll("{status}", statusLabel)
-    .replaceAll("{emoji}", statusEmoji[status]);
+    .replace(/\{parent\}/g, guardian)
+    .replace(/\{student\}/g, studentName)
+    .replace(/\{class\}/g, classLabel)
+    .replace(/\{date\}/g, date)
+    .replace(/\{status\}/g, statusLabel)
+    .replace(/\{emoji\}/g, statusEmoji[status]);
 };
 
 export const buildResultMessage = ({
