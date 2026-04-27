@@ -1478,6 +1478,75 @@ export const AttendanceDashboard = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
+                  <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <CardTitle className="font-display text-2xl">Parent message template</CardTitle>
+                      <CardDescription>
+                        Edit the WhatsApp message that goes to parents. Use placeholders <code className="rounded bg-muted px-1">{"{parent}"}</code>, <code className="rounded bg-muted px-1">{"{student}"}</code>, <code className="rounded bg-muted px-1">{"{class}"}</code>, <code className="rounded bg-muted px-1">{"{date}"}</code>, <code className="rounded bg-muted px-1">{"{status}"}</code>, <code className="rounded bg-muted px-1">{"{emoji}"}</code>. Changes are saved automatically for admins and teachers.
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={templateEditStatus} onValueChange={(value) => setTemplateEditStatus(value as AttendanceStatus)}>
+                        <SelectTrigger className="w-[140px] border-border/70 bg-muted/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {attendanceStatuses.map((status) => (
+                            <SelectItem key={status} value={status}>{attendanceLabels[status]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setMessageTemplates((prev) => ({
+                            ...prev,
+                            [messageLanguage]: {
+                              ...prev[messageLanguage],
+                              [templateEditStatus]: defaultMessageTemplates[messageLanguage][templateEditStatus],
+                            },
+                          }))
+                        }
+                      >
+                        Reset to default
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Template ({languageLabels[messageLanguage]} · {attendanceLabels[templateEditStatus]})</Label>
+                      <Textarea
+                        rows={10}
+                        value={messageTemplates[messageLanguage][templateEditStatus]}
+                        onChange={(e) =>
+                          setMessageTemplates((prev) => ({
+                            ...prev,
+                            [messageLanguage]: {
+                              ...prev[messageLanguage],
+                              [templateEditStatus]: e.target.value,
+                            },
+                          }))
+                        }
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Live preview</Label>
+                      <div className="whitespace-pre-wrap rounded-2xl border border-border/70 bg-background/70 p-4 text-sm leading-relaxed">
+                        {buildAttendanceMessage({
+                          studentName: filteredStudents[0]?.full_name ?? "Riya Sharma",
+                          parentName: filteredStudents[0]?.parent_name ?? "Parent",
+                          classLabel,
+                          date: format(new Date(selectedDate), "dd MMM yyyy"),
+                          status: templateEditStatus,
+                          language: messageLanguage,
+                          template: messageTemplates[messageLanguage][templateEditStatus],
+                        })}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="imports" className="grid gap-6 xl:grid-cols-[1fr,1fr]">
