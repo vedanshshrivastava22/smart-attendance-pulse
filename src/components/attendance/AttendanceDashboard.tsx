@@ -302,6 +302,26 @@ export const AttendanceDashboard = () => {
   const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
   const [payrollNotes, setPayrollNotes] = useState("");
 
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
+    if (typeof window === "undefined") return defaultMessageTemplates;
+    try {
+      const saved = window.localStorage.getItem("attendance.messageTemplates");
+      if (saved) return { ...defaultMessageTemplates, ...JSON.parse(saved) };
+    } catch {
+      // ignore
+    }
+    return defaultMessageTemplates;
+  });
+  const [templateEditStatus, setTemplateEditStatus] = useState<AttendanceStatus>("absent");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("attendance.messageTemplates", JSON.stringify(messageTemplates));
+    } catch {
+      // ignore
+    }
+  }, [messageTemplates]);
+
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
