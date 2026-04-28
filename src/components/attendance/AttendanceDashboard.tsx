@@ -2048,14 +2048,14 @@ export const AttendanceDashboard = () => {
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
-          <span className="text-gray-500">
+          <span className="text-gray-800">
             © {new Date().getFullYear()} All copyrights reserved by
           </span>{" "}
           <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_1px_8px_rgba(251,191,36,0.45)]">
             Analytical Visionary
           </span>{" "}
-          <span className="text-gray-500">
-            with lots of love ❤️
+          <span className="text-gray-800">
+            with lots of love
           </span>
         </p>
       </footer>
