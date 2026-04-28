@@ -2044,6 +2044,12 @@ export const AttendanceDashboard = () => {
           </div>
         </section>
       </main>
+      <footer className="border-t border-border/60 bg-panel/60 py-6 mt-10">
+        <p className="text-center text-sm text-muted-foreground">
+          © {new Date().getFullYear()} All copyrights reserved by{" "}
+          <span className="font-semibold text-foreground">Analytical Visionary</span> with lots of love ❤️
+        </p>
+      </footer>
     </div>
   );
 };
