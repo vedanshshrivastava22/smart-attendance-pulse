@@ -2046,8 +2046,6 @@ export const AttendanceDashboard = () => {
       </main>
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
-      <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
-        <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
           <span className="text-gray-800">
             © {new Date().getFullYear()} All copyrights reserved by
           </span>{" "}
