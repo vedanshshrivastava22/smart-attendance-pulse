@@ -2059,9 +2059,6 @@ export const AttendanceDashboard = () => {
           </span>
         </p>
       </footer>
-          <span className="text-rose-500 drop-shadow-[0_0_6px_rgba(244,63,94,0.6)]">❤️</span>
-        </p>
-      </footer>
     </div>
   );
 };
