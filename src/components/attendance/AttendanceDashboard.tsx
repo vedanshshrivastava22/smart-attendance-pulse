@@ -2044,10 +2044,14 @@ export const AttendanceDashboard = () => {
           </div>
         </section>
       </main>
-      <footer className="border-t border-border/60 bg-panel/60 py-6 mt-10">
-        <p className="text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} All copyrights reserved by{" "}
-          <span className="font-semibold text-foreground">Analytical Visionary</span> with lots of love ❤️
+      <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
+        <p className="text-center text-sm md:text-base font-medium tracking-wide">
+          <span className="text-foreground">© {new Date().getFullYear()} All copyrights reserved by</span>{" "}
+          <span className="font-display font-bold bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_1px_8px_rgba(251,191,36,0.35)]">
+            Analytical Visionary
+          </span>{" "}
+          <span className="text-foreground">with lots of love</span>{" "}
+          <span className="text-rose-500 drop-shadow-[0_0_6px_rgba(244,63,94,0.6)]">❤️</span>
         </p>
       </footer>
     </div>
