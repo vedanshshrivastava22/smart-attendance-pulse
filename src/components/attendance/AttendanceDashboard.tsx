@@ -195,9 +195,22 @@ const deriveDailySummary = (rows: AttendanceRecord[]): DailySummary =>
 const parseWorkbookRows = async (file: File) => {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
-  const sheetName = workbook.SheetNames[0] ?? "Sheet1";
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: "" });
-  return { rows, sheetName };
+  const sheetNames = workbook.SheetNames.length ? workbook.SheetNames : ["Sheet1"];
+  const rows: Record<string, unknown>[] = [];
+  for (const name of sheetNames) {
+    const ws = workbook.Sheets[name];
+    if (!ws) continue;
+    const sheetRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+    // Inject sheet name as class fallback so multi-sheet workbooks (Class 9, 10, 11, 12) split correctly
+    for (const r of sheetRows) {
+      const hasClass = Object.keys(r).some((k) => normalizeHeader(k) === "class_name" || normalizeHeader(k) === "class");
+      if (!hasClass) {
+        (r as Record<string, unknown>).class_name = name;
+      }
+      rows.push(r);
+    }
+  }
+  return { rows, sheetName: sheetNames.join(", ") };
 };
 
 const mapStudentRows = (rows: Record<string, unknown>[], selectedClassName: string): StudentImportRow[] =>
