@@ -337,6 +337,7 @@ export const AttendanceDashboard = () => {
   }, [messageTemplates]);
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [whatsappQueue, setWhatsappQueue] = useState<Array<{ phone: string; message: string; name: string }>>([]);
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
   const [lastImportSheetName, setLastImportSheetName] = useState("");
@@ -707,9 +708,9 @@ export const AttendanceDashboard = () => {
       toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
       return;
     }
-    let opened = 0;
+    const queue: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
-    targets.forEach((student, idx) => {
+    targets.forEach((student) => {
       const status = attendanceDrafts[student.id] ?? "present";
       const message = buildAttendanceMessage({
         studentName: student.full_name,
@@ -726,17 +727,34 @@ export const AttendanceDashboard = () => {
         return;
       }
       const phone = raw.length === 10 ? `91${raw}` : raw;
-      // Stagger so the browser doesn't block popups
-      setTimeout(() => {
-        openWhatsApp(phone, message);
-      }, idx * 350);
-      opened += 1;
+      queue.push({ phone, message, name: student.full_name });
     });
+    if (!queue.length) {
+      toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
+      return;
+    }
+    // Open the first one inside this user gesture so the browser allows it.
+    const [first, ...rest] = queue;
+    openWhatsApp(first.phone, first.message);
+    setWhatsappQueue(rest);
     toast({
-      title: `Opening WhatsApp for ${opened} parent${opened === 1 ? "" : "s"}`,
-      description: skipped ? `${skipped} skipped (no phone). Allow popups for this site.` : "Allow popups so every chat can open.",
+      title: `Opening WhatsApp for ${queue.length} parent${queue.length === 1 ? "" : "s"}`,
+      description: rest.length
+        ? `Opened 1 of ${queue.length}. Click "Send next" for each remaining message.${skipped ? ` ${skipped} skipped (no phone).` : ""}`
+        : skipped
+          ? `${skipped} skipped (no phone).`
+          : "Done.",
     });
   };
+
+  const sendNextInQueue = () => {
+    if (!whatsappQueue.length) return;
+    const [next, ...rest] = whatsappQueue;
+    openWhatsApp(next.phone, next.message);
+    setWhatsappQueue(rest);
+  };
+
+  const clearWhatsappQueue = () => setWhatsappQueue([]);
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const status = attendanceDrafts[student.id] ?? "present";
@@ -1343,7 +1361,31 @@ export const AttendanceDashboard = () => {
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
       />
 
+      {whatsappQueue.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-xl border border-border/70 bg-panel/95 p-4 shadow-[var(--shadow-elevated)] backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">WhatsApp queue</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {whatsappQueue.length} message{whatsappQueue.length === 1 ? "" : "s"} pending. Next: <span className="font-medium text-foreground">{whatsappQueue[0]?.name}</span>
+              </p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={clearWhatsappQueue} className="h-7 px-2 text-xs">
+              Clear
+            </Button>
+          </div>
+          <Button size="sm" className="mt-3 w-full gap-2" onClick={sendNextInQueue}>
+            <Send className="h-4 w-4" />
+            Send next ({whatsappQueue.length} left)
+          </Button>
+          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+            Browsers only allow opening WhatsApp on a click. Tap the button for each remaining parent.
+          </p>
+        </div>
+      )}
+
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
         <section className="grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">
           <MotionCard initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="overflow-hidden border-border/60 bg-panel/90 shadow-[var(--shadow-elevated)]">
             <CardHeader className="space-y-6 pb-4">
