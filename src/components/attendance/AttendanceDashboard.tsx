@@ -789,7 +789,7 @@ export const AttendanceDashboard = () => {
       toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
       return;
     }
-    const queue: Array<{ phone: string; message: string; name: string }> = [];
+    const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
       const status = attendanceDrafts[student.id] ?? "present";
@@ -808,34 +808,26 @@ export const AttendanceDashboard = () => {
         return;
       }
       const phone = raw.length === 10 ? `91${raw}` : raw;
-      queue.push({ phone, message, name: student.full_name });
+      messages.push({ phone, message, name: student.full_name });
     });
-    if (!queue.length) {
+    if (!messages.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    // Open the first one inside this user gesture so the browser allows it.
-    const [first, ...rest] = queue;
-    openWhatsApp(first.phone, first.message);
-    setWhatsappQueue(rest);
+    const opened = messages.reduce((count, item, index) => {
+      const popup = window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
+      return popup ? count + 1 : count;
+    }, 0);
     toast({
-      title: `Opening WhatsApp for ${queue.length} parent${queue.length === 1 ? "" : "s"}`,
-      description: rest.length
-        ? `Opened 1 of ${queue.length}. Click "Send next" for each remaining message.${skipped ? ` ${skipped} skipped (no phone).` : ""}`
+      title: `Opened WhatsApp for ${opened} of ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
+      description: opened < messages.length
+        ? `Allow pop-ups for this app, then click again to open all messages at once.${skipped ? ` ${skipped} skipped (no phone).` : ""}`
         : skipped
           ? `${skipped} skipped (no phone).`
-          : "Done.",
+          : "All parent chats opened.",
+      variant: opened < messages.length ? "destructive" : "default",
     });
   };
-
-  const sendNextInQueue = () => {
-    if (!whatsappQueue.length) return;
-    const [next, ...rest] = whatsappQueue;
-    openWhatsApp(next.phone, next.message);
-    setWhatsappQueue(rest);
-  };
-
-  const clearWhatsappQueue = () => setWhatsappQueue([]);
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const status = attendanceDrafts[student.id] ?? "present";
