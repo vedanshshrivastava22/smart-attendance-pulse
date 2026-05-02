@@ -556,6 +556,59 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  const persistMessageTemplate = (language: MessageLanguage, status: AttendanceStatus, templateBody: string, immediate = false) => {
+    if (templateSaveTimerRef.current) clearTimeout(templateSaveTimerRef.current);
+    if (!currentUserId) return;
+
+    const saveTemplate = async () => {
+      setTemplateSaveState("saving");
+      const { error } = await supabase.from("message_templates").upsert(
+        {
+          user_id: currentUserId,
+          message_language: language,
+          attendance_status: status,
+          template_body: templateBody,
+        },
+        { onConflict: "user_id,message_language,attendance_status" },
+      );
+      setTemplateSaveState(error ? "error" : "saved");
+      if (error) {
+        toast({ title: "Template not saved", description: error.message, variant: "destructive" });
+      }
+    };
+
+    if (immediate) {
+      void saveTemplate();
+      return;
+    }
+
+    setTemplateSaveState("saving");
+    templateSaveTimerRef.current = setTimeout(() => void saveTemplate(), 600);
+  };
+
+  const updateMessageTemplate = (templateBody: string) => {
+    setMessageTemplates((prev) => ({
+      ...prev,
+      [messageLanguage]: {
+        ...prev[messageLanguage],
+        [templateEditStatus]: templateBody,
+      },
+    }));
+    persistMessageTemplate(messageLanguage, templateEditStatus, templateBody);
+  };
+
+  const resetMessageTemplate = () => {
+    const defaultBody = defaultMessageTemplates[messageLanguage][templateEditStatus];
+    setMessageTemplates((prev) => ({
+      ...prev,
+      [messageLanguage]: {
+        ...prev[messageLanguage],
+        [templateEditStatus]: defaultBody,
+      },
+    }));
+    persistMessageTemplate(messageLanguage, templateEditStatus, defaultBody, true);
+  };
+
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmittingAuth(true);
