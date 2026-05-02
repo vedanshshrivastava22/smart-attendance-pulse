@@ -440,10 +440,11 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
+      supabase.from("message_templates").select("*").eq("user_id", userId),
       supabase.from("school_classes").select("*").order("class_name"),
       supabase.from("students").select("*").order("roll_number"),
       supabase.from("attendance_analytics").select("*"),
@@ -453,7 +454,7 @@ export const AttendanceDashboard = () => {
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
     ]);
 
-    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
+    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
     if (errors.length) {
       toast({ title: "Could not load dashboard", description: errors[0]?.message ?? "Please try again.", variant: "destructive" });
       setLoading(false);
@@ -464,6 +465,7 @@ export const AttendanceDashboard = () => {
     setProfile(profileRes.data ?? null);
     setRoles((rolesRes.data ?? []).map((item) => item.role));
     setStaffProfiles(staffProfilesRes.data ?? []);
+    setMessageTemplates(templatesFromRows(templatesRes.data ?? []));
     setClasses(classesRes.data ?? []);
     setStudents((studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null })));
     setAnalytics(analyticsRes.data ?? []);
