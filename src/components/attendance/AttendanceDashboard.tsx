@@ -335,16 +335,18 @@ export const AttendanceDashboard = () => {
   const [payrollNotes, setPayrollNotes] = useState("");
 
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
-    if (typeof window === "undefined") return defaultMessageTemplates;
+    if (typeof window === "undefined") return mergeMessageTemplates();
     try {
       const saved = window.localStorage.getItem("attendance.messageTemplates");
-      if (saved) return { ...defaultMessageTemplates, ...JSON.parse(saved) };
+      if (saved) return mergeMessageTemplates(JSON.parse(saved));
     } catch {
       // ignore
     }
-    return defaultMessageTemplates;
+    return mergeMessageTemplates();
   });
   const [templateEditStatus, setTemplateEditStatus] = useState<AttendanceStatus>("absent");
+  const [templateSaveState, setTemplateSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const templateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -353,6 +355,13 @@ export const AttendanceDashboard = () => {
       // ignore
     }
   }, [messageTemplates]);
+
+  useEffect(
+    () => () => {
+      if (templateSaveTimerRef.current) clearTimeout(templateSaveTimerRef.current);
+    },
+    [],
+  );
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
   const [whatsappQueue, setWhatsappQueue] = useState<Array<{ phone: string; message: string; name: string }>>([]);
