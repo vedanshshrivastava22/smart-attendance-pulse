@@ -814,18 +814,14 @@ export const AttendanceDashboard = () => {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    const opened = messages.reduce((count, item, index) => {
-      const popup = window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
-      return popup ? count + 1 : count;
-    }, 0);
+    messages.forEach((item, index) => {
+      window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
+    });
     toast({
-      title: `Opened WhatsApp for ${opened} of ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
-      description: opened < messages.length
-        ? `Allow pop-ups for this app, then click again to open all messages at once.${skipped ? ` ${skipped} skipped (no phone).` : ""}`
-        : skipped
-          ? `${skipped} skipped (no phone).`
-          : "All parent chats opened.",
-      variant: opened < messages.length ? "destructive" : "default",
+      title: `Opening WhatsApp for ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
+      description: skipped
+        ? `${skipped} skipped (no phone). If only one chat opens, allow pop-ups for this app and click again.`
+        : "If only one chat opens, allow pop-ups for this app and click again.",
     });
   };
 
