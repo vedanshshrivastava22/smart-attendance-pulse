@@ -1434,29 +1434,6 @@ export const AttendanceDashboard = () => {
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {whatsappQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-xl border border-border/70 bg-panel/95 p-4 shadow-[var(--shadow-elevated)] backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">WhatsApp queue</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {whatsappQueue.length} message{whatsappQueue.length === 1 ? "" : "s"} pending. Next: <span className="font-medium text-foreground">{whatsappQueue[0]?.name}</span>
-              </p>
-            </div>
-            <Button size="sm" variant="ghost" onClick={clearWhatsappQueue} className="h-7 px-2 text-xs">
-              Clear
-            </Button>
-          </div>
-          <Button size="sm" className="mt-3 w-full gap-2" onClick={sendNextInQueue}>
-            <Send className="h-4 w-4" />
-            Send next ({whatsappQueue.length} left)
-          </Button>
-          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-            Browsers only allow opening WhatsApp on a click. Tap the button for each remaining parent.
-          </p>
-        </div>
-      )}
-
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
         <section className="grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">
