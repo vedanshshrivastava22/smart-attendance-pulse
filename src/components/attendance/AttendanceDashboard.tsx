@@ -1714,15 +1714,7 @@ export const AttendanceDashboard = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                          setMessageTemplates((prev) => ({
-                            ...prev,
-                            [messageLanguage]: {
-                              ...prev[messageLanguage],
-                              [templateEditStatus]: defaultMessageTemplates[messageLanguage][templateEditStatus],
-                            },
-                          }))
-                        }
+                        onClick={resetMessageTemplate}
                       >
                         Reset to default
                       </Button>
@@ -1734,17 +1726,12 @@ export const AttendanceDashboard = () => {
                       <Textarea
                         rows={10}
                         value={messageTemplates[messageLanguage][templateEditStatus]}
-                        onChange={(e) =>
-                          setMessageTemplates((prev) => ({
-                            ...prev,
-                            [messageLanguage]: {
-                              ...prev[messageLanguage],
-                              [templateEditStatus]: e.target.value,
-                            },
-                          }))
-                        }
+                        onChange={(e) => updateMessageTemplate(e.target.value)}
                         className="font-mono text-sm"
                       />
+                      <p className={cn("text-xs", templateSaveState === "error" ? "text-destructive" : "text-muted-foreground")}>
+                        {templateSaveState === "saving" ? "Saving permanently..." : templateSaveState === "error" ? "Could not save permanently." : "Saved permanently."}
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Live preview</Label>
