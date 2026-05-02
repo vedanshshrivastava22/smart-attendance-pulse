@@ -142,6 +142,36 @@ export type Database = {
           },
         ]
       }
+      message_templates: {
+        Row: {
+          attendance_status: Database["public"]["Enums"]["attendance_status"]
+          created_at: string
+          id: string
+          message_language: Database["public"]["Enums"]["message_language"]
+          template_body: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attendance_status: Database["public"]["Enums"]["attendance_status"]
+          created_at?: string
+          id?: string
+          message_language: Database["public"]["Enums"]["message_language"]
+          template_body: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attendance_status?: Database["public"]["Enums"]["attendance_status"]
+          created_at?: string
+          id?: string
+          message_language?: Database["public"]["Enums"]["message_language"]
+          template_body?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_events: {
         Row: {
           attendance_record_id: string | null

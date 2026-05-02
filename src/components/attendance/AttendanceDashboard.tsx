@@ -37,6 +37,7 @@ import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  buildWhatsAppUrl,
   openWhatsApp,
   buildDailyReportMessage,
   buildResultMessage,
@@ -69,6 +70,7 @@ type Student = Database["public"]["Tables"]["students"]["Row"];
 type AttendanceRecord = Database["public"]["Tables"]["attendance_records"]["Row"];
 type AttendanceAnalytics = Database["public"]["Views"]["attendance_analytics"]["Row"];
 type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Row"];
+type MessageTemplateRow = Database["public"]["Tables"]["message_templates"]["Row"];
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -142,6 +144,22 @@ const formatCurrency = (value?: number | null) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value ?? 0);
 
 const currentMonthStart = () => `${new Date().toISOString().slice(0, 7)}-01`;
+
+const mergeMessageTemplates = (saved?: Partial<Record<MessageLanguage, Partial<Record<AttendanceStatus, string>>>>): MessageTemplates => ({
+  english: { ...defaultMessageTemplates.english, ...(saved?.english ?? {}) },
+  hindi: { ...defaultMessageTemplates.hindi, ...(saved?.hindi ?? {}) },
+});
+
+const templatesFromRows = (rows: MessageTemplateRow[] = []) => {
+  const saved: Partial<Record<MessageLanguage, Partial<Record<AttendanceStatus, string>>>> = {};
+  rows.forEach((row) => {
+    saved[row.message_language] = {
+      ...(saved[row.message_language] ?? {}),
+      [row.attendance_status]: row.template_body,
+    };
+  });
+  return mergeMessageTemplates(saved);
+};
 
 const statCards = [
   { key: "students", title: "Students in class", hint: "Live class roster count", icon: Users },
@@ -317,16 +335,18 @@ export const AttendanceDashboard = () => {
   const [payrollNotes, setPayrollNotes] = useState("");
 
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
-    if (typeof window === "undefined") return defaultMessageTemplates;
+    if (typeof window === "undefined") return mergeMessageTemplates();
     try {
       const saved = window.localStorage.getItem("attendance.messageTemplates");
-      if (saved) return { ...defaultMessageTemplates, ...JSON.parse(saved) };
+      if (saved) return mergeMessageTemplates(JSON.parse(saved));
     } catch {
       // ignore
     }
-    return defaultMessageTemplates;
+    return mergeMessageTemplates();
   });
   const [templateEditStatus, setTemplateEditStatus] = useState<AttendanceStatus>("absent");
+  const [templateSaveState, setTemplateSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const templateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -336,8 +356,14 @@ export const AttendanceDashboard = () => {
     }
   }, [messageTemplates]);
 
+  useEffect(
+    () => () => {
+      if (templateSaveTimerRef.current) clearTimeout(templateSaveTimerRef.current);
+    },
+    [],
+  );
+
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
-  const [whatsappQueue, setWhatsappQueue] = useState<Array<{ phone: string; message: string; name: string }>>([]);
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
   const [lastImportSheetName, setLastImportSheetName] = useState("");
@@ -413,10 +439,11 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
+      supabase.from("message_templates").select("*").eq("user_id", userId),
       supabase.from("school_classes").select("*").order("class_name"),
       supabase.from("students").select("*").order("roll_number"),
       supabase.from("attendance_analytics").select("*"),
@@ -426,7 +453,7 @@ export const AttendanceDashboard = () => {
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
     ]);
 
-    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
+    const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
     if (errors.length) {
       toast({ title: "Could not load dashboard", description: errors[0]?.message ?? "Please try again.", variant: "destructive" });
       setLoading(false);
@@ -437,6 +464,7 @@ export const AttendanceDashboard = () => {
     setProfile(profileRes.data ?? null);
     setRoles((rolesRes.data ?? []).map((item) => item.role));
     setStaffProfiles(staffProfilesRes.data ?? []);
+    setMessageTemplates(templatesFromRows(templatesRes.data ?? []));
     setClasses(classesRes.data ?? []);
     setStudents((studentsRes.data ?? []).map((student) => ({ ...student, analytics: analyticsMap.get(student.id) ?? null })));
     setAnalytics(analyticsRes.data ?? []);
@@ -525,6 +553,59 @@ export const AttendanceDashboard = () => {
     if (selectedClassId) {
       await fetchDailyRecords(selectedClassId, selectedDate);
     }
+  };
+
+  const persistMessageTemplate = (language: MessageLanguage, status: AttendanceStatus, templateBody: string, immediate = false) => {
+    if (templateSaveTimerRef.current) clearTimeout(templateSaveTimerRef.current);
+    if (!currentUserId) return;
+
+    const saveTemplate = async () => {
+      setTemplateSaveState("saving");
+      const { error } = await supabase.from("message_templates").upsert(
+        {
+          user_id: currentUserId,
+          message_language: language,
+          attendance_status: status,
+          template_body: templateBody,
+        },
+        { onConflict: "user_id,message_language,attendance_status" },
+      );
+      setTemplateSaveState(error ? "error" : "saved");
+      if (error) {
+        toast({ title: "Template not saved", description: error.message, variant: "destructive" });
+      }
+    };
+
+    if (immediate) {
+      void saveTemplate();
+      return;
+    }
+
+    setTemplateSaveState("saving");
+    templateSaveTimerRef.current = setTimeout(() => void saveTemplate(), 600);
+  };
+
+  const updateMessageTemplate = (templateBody: string) => {
+    setMessageTemplates((prev) => ({
+      ...prev,
+      [messageLanguage]: {
+        ...prev[messageLanguage],
+        [templateEditStatus]: templateBody,
+      },
+    }));
+    persistMessageTemplate(messageLanguage, templateEditStatus, templateBody);
+  };
+
+  const resetMessageTemplate = () => {
+    const defaultBody = defaultMessageTemplates[messageLanguage][templateEditStatus];
+    setMessageTemplates((prev) => ({
+      ...prev,
+      [messageLanguage]: {
+        ...prev[messageLanguage],
+        [templateEditStatus]: defaultBody,
+      },
+    }));
+    persistMessageTemplate(messageLanguage, templateEditStatus, defaultBody, true);
   };
 
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -708,7 +789,7 @@ export const AttendanceDashboard = () => {
       toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
       return;
     }
-    const queue: Array<{ phone: string; message: string; name: string }> = [];
+    const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
       const status = attendanceDrafts[student.id] ?? "present";
@@ -727,34 +808,22 @@ export const AttendanceDashboard = () => {
         return;
       }
       const phone = raw.length === 10 ? `91${raw}` : raw;
-      queue.push({ phone, message, name: student.full_name });
+      messages.push({ phone, message, name: student.full_name });
     });
-    if (!queue.length) {
+    if (!messages.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    // Open the first one inside this user gesture so the browser allows it.
-    const [first, ...rest] = queue;
-    openWhatsApp(first.phone, first.message);
-    setWhatsappQueue(rest);
+    messages.forEach((item, index) => {
+      window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
+    });
     toast({
-      title: `Opening WhatsApp for ${queue.length} parent${queue.length === 1 ? "" : "s"}`,
-      description: rest.length
-        ? `Opened 1 of ${queue.length}. Click "Send next" for each remaining message.${skipped ? ` ${skipped} skipped (no phone).` : ""}`
-        : skipped
-          ? `${skipped} skipped (no phone).`
-          : "Done.",
+      title: `Opening WhatsApp for ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
+      description: skipped
+        ? `${skipped} skipped (no phone). If only one chat opens, allow pop-ups for this app and click again.`
+        : "If only one chat opens, allow pop-ups for this app and click again.",
     });
   };
-
-  const sendNextInQueue = () => {
-    if (!whatsappQueue.length) return;
-    const [next, ...rest] = whatsappQueue;
-    openWhatsApp(next.phone, next.message);
-    setWhatsappQueue(rest);
-  };
-
-  const clearWhatsappQueue = () => setWhatsappQueue([]);
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const status = attendanceDrafts[student.id] ?? "present";
@@ -1361,29 +1430,6 @@ export const AttendanceDashboard = () => {
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {whatsappQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-xl border border-border/70 bg-panel/95 p-4 shadow-[var(--shadow-elevated)] backdrop-blur">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">WhatsApp queue</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {whatsappQueue.length} message{whatsappQueue.length === 1 ? "" : "s"} pending. Next: <span className="font-medium text-foreground">{whatsappQueue[0]?.name}</span>
-              </p>
-            </div>
-            <Button size="sm" variant="ghost" onClick={clearWhatsappQueue} className="h-7 px-2 text-xs">
-              Clear
-            </Button>
-          </div>
-          <Button size="sm" className="mt-3 w-full gap-2" onClick={sendNextInQueue}>
-            <Send className="h-4 w-4" />
-            Send next ({whatsappQueue.length} left)
-          </Button>
-          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-            Browsers only allow opening WhatsApp on a click. Tap the button for each remaining parent.
-          </p>
-        </div>
-      )}
-
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
         <section className="grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">
@@ -1664,15 +1710,7 @@ export const AttendanceDashboard = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                          setMessageTemplates((prev) => ({
-                            ...prev,
-                            [messageLanguage]: {
-                              ...prev[messageLanguage],
-                              [templateEditStatus]: defaultMessageTemplates[messageLanguage][templateEditStatus],
-                            },
-                          }))
-                        }
+                        onClick={resetMessageTemplate}
                       >
                         Reset to default
                       </Button>
@@ -1684,17 +1722,12 @@ export const AttendanceDashboard = () => {
                       <Textarea
                         rows={10}
                         value={messageTemplates[messageLanguage][templateEditStatus]}
-                        onChange={(e) =>
-                          setMessageTemplates((prev) => ({
-                            ...prev,
-                            [messageLanguage]: {
-                              ...prev[messageLanguage],
-                              [templateEditStatus]: e.target.value,
-                            },
-                          }))
-                        }
+                        onChange={(e) => updateMessageTemplate(e.target.value)}
                         className="font-mono text-sm"
                       />
+                      <p className={cn("text-xs", templateSaveState === "error" ? "text-destructive" : "text-muted-foreground")}>
+                        {templateSaveState === "saving" ? "Saving permanently..." : templateSaveState === "error" ? "Could not save permanently." : "Saved permanently."}
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Live preview</Label>
