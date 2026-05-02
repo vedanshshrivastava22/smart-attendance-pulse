@@ -37,6 +37,7 @@ import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  buildWhatsAppUrl,
   openWhatsApp,
   buildDailyReportMessage,
   buildResultMessage,
@@ -69,6 +70,7 @@ type Student = Database["public"]["Tables"]["students"]["Row"];
 type AttendanceRecord = Database["public"]["Tables"]["attendance_records"]["Row"];
 type AttendanceAnalytics = Database["public"]["Views"]["attendance_analytics"]["Row"];
 type NotificationEvent = Database["public"]["Tables"]["notification_events"]["Row"];
+type MessageTemplateRow = Database["public"]["Tables"]["message_templates"]["Row"];
 type ResultUpload = Database["public"]["Tables"]["result_uploads"]["Row"];
 type ExcelImport = Database["public"]["Tables"]["excel_imports"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -142,6 +144,22 @@ const formatCurrency = (value?: number | null) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value ?? 0);
 
 const currentMonthStart = () => `${new Date().toISOString().slice(0, 7)}-01`;
+
+const mergeMessageTemplates = (saved?: Partial<Record<MessageLanguage, Partial<Record<AttendanceStatus, string>>>>): MessageTemplates => ({
+  english: { ...defaultMessageTemplates.english, ...(saved?.english ?? {}) },
+  hindi: { ...defaultMessageTemplates.hindi, ...(saved?.hindi ?? {}) },
+});
+
+const templatesFromRows = (rows: MessageTemplateRow[] = []) => {
+  const saved: Partial<Record<MessageLanguage, Partial<Record<AttendanceStatus, string>>>> = {};
+  rows.forEach((row) => {
+    saved[row.message_language] = {
+      ...(saved[row.message_language] ?? {}),
+      [row.attendance_status]: row.template_body,
+    };
+  });
+  return mergeMessageTemplates(saved);
+};
 
 const statCards = [
   { key: "students", title: "Students in class", hint: "Live class roster count", icon: Users },
