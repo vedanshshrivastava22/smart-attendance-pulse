@@ -337,6 +337,7 @@ export const AttendanceDashboard = () => {
   }, [messageTemplates]);
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [whatsappQueue, setWhatsappQueue] = useState<Array<{ phone: string; message: string; name: string }>>([]);
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
   const [lastImportSheetName, setLastImportSheetName] = useState("");
