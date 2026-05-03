@@ -549,10 +549,10 @@ export const AttendanceDashboard = () => {
     students
       .filter((student) => student.class_id === selectedClassId)
       .forEach((student) => {
-        nextDrafts[student.id] = attendanceDrafts[student.id] ?? "present";
+        nextDrafts[student.id] = dailyRecordByStudentId.get(student.id)?.status ?? "present";
       });
     setAttendanceDrafts((current) => ({ ...current, ...nextDrafts }));
-  }, [selectedClassId, students]);
+  }, [dailyRecordByStudentId, selectedClassId, students]);
 
   useEffect(() => {
     setActivePanel(isAdmin ? "admin" : "teacher");
