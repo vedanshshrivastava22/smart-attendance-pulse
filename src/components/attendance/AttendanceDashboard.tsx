@@ -404,6 +404,23 @@ export const AttendanceDashboard = () => {
 
   const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
 
+  const dailyRecordByStudentId = useMemo(() => new Map(dailyRecords.map((record) => [record.student_id, record])), [dailyRecords]);
+
+  const getStudentAttendanceStatus = (student: StudentWithAnalytics) =>
+    attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present";
+
+  const bulkStatusCounts = useMemo(
+    () =>
+      attendanceStatuses.reduce(
+        (counts, status) => ({
+          ...counts,
+          [status]: filteredStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
+        }),
+        { present: 0, absent: 0, leave: 0, holiday: 0 } as Record<AttendanceStatus, number>,
+      ),
+    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+  );
+
   const payrollOverview = useMemo(() => {
     const monthItems = payroll.filter((item) => item.payroll_month?.slice(0, 7) === payrollMonth.slice(0, 7));
     return {
