@@ -81,6 +81,19 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { profiles?: Pick<Profile, "full_name" | "phone" | "user_id"> | null };
 type StaffRole = Database["public"]["Enums"]["app_role"];
 type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
+type PayslipSettings = Database["public"]["Tables"]["payslip_settings"]["Row"];
+
+const defaultPayslipSettings = {
+  organization_name: "Your School",
+  address_line: "",
+  header_title: "Salary Payslip",
+  header_note: "",
+  footer_note: "This is a system-generated payslip.",
+  signatory_name: "",
+  logo_url: "",
+  show_pf: true,
+  show_esi: true,
+};
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
