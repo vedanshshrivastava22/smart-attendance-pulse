@@ -26,6 +26,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
