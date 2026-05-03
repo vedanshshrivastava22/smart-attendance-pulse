@@ -1273,6 +1273,8 @@ export const AttendanceDashboard = () => {
           base_salary: Number(baseSalary || 0),
           allowances: Number(allowances || 0),
           deductions: Number(deductions || 0),
+          pf: Number(pf || 0),
+          esi: Number(esi || 0),
           status: payrollStatus,
           paid_on: payrollStatus === "paid" ? todayDate() : null,
           notes: payrollNotes || null,
@@ -1286,6 +1288,8 @@ export const AttendanceDashboard = () => {
       setBaseSalary("");
       setAllowances("");
       setDeductions("");
+      setPf("");
+      setEsi("");
       setPayrollNotes("");
       setPayrollStatus("draft");
       await refreshAll();
