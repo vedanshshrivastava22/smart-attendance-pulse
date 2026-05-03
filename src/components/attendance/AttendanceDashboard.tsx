@@ -1302,25 +1302,98 @@ export const AttendanceDashboard = () => {
 
   const buildPayslipDoc = (item: SalaryPayroll) => {
     const staffName = item.profiles?.full_name || "Staff member";
+    const s = payslipSettings;
     const doc = new jsPDF();
+    let y = 16;
+
+    if (s.logo_url) {
+      try {
+        doc.addImage(s.logo_url, "PNG", 15, y, 24, 24);
+      } catch {
+        // ignore image errors
+      }
+    }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.text("Salary Payslip", 20, 24);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Staff: ${staffName}`, 20, 42);
-    doc.text(`Phone: ${item.profiles?.phone || "-"}`, 20, 50);
-    doc.text(`Month: ${format(new Date(item.payroll_month), "MMMM yyyy")}`, 20, 58);
-    doc.text(`Status: ${payrollStatusLabels[item.status]}`, 20, 66);
-    doc.line(20, 76, 190, 76);
-    doc.text(`Base salary: ${formatCurrency(item.base_salary)}`, 24, 90);
-    doc.text(`Allowances: ${formatCurrency(item.allowances)}`, 24, 102);
-    doc.text(`Deductions: ${formatCurrency(item.deductions)}`, 24, 114);
+    doc.setFontSize(16);
+    doc.text(s.organization_name || "Your School", s.logo_url ? 44 : 15, y + 8);
+    if (s.address_line) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(s.address_line, s.logo_url ? 44 : 15, y + 16, { maxWidth: 150 });
+    }
+    y += 32;
+
     doc.setFont("helvetica", "bold");
-    doc.text(`Net salary: ${formatCurrency(item.net_salary)}`, 24, 130);
+    doc.setFontSize(14);
+    doc.text(s.header_title || "Salary Payslip", 105, y, { align: "center" });
+    y += 6;
+
+    if (s.header_note) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.text(s.header_note, 105, y + 4, { align: "center", maxWidth: 170 });
+      y += 8;
+    }
+
     doc.setFont("helvetica", "normal");
-    doc.text(`Paid on: ${item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"}`, 24, 144);
-    if (item.notes) doc.text(`Notes: ${item.notes}`, 24, 158, { maxWidth: 160 });
+    doc.setFontSize(10);
+    autoTable(doc, {
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: [
+        ["Staff name", staffName],
+        ["Phone", item.profiles?.phone || "-"],
+        ["Month", format(new Date(item.payroll_month), "MMMM yyyy")],
+        ["Status", payrollStatusLabels[item.status]],
+        ["Paid on", item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"],
+      ],
+    });
+
+    const earningsRows: [string, string][] = [
+      ["Base salary", formatCurrency(item.base_salary)],
+      ["Allowances", formatCurrency(item.allowances)],
+    ];
+    const deductionRows: [string, string][] = [
+      ["Deductions", formatCurrency(item.deductions)],
+    ];
+    if (s.show_pf) deductionRows.push(["PF", formatCurrency((item as any).pf ?? 0)]);
+    if (s.show_esi) deductionRows.push(["ESI", formatCurrency((item as any).esi ?? 0)]);
+
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 6,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2.5 },
+      head: [["Earnings", "Amount", "Deductions", "Amount"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: Array.from({ length: Math.max(earningsRows.length, deductionRows.length) }, (_, i) => [
+        earningsRows[i]?.[0] ?? "",
+        earningsRows[i]?.[1] ?? "",
+        deductionRows[i]?.[0] ?? "",
+        deductionRows[i]?.[1] ?? "",
+      ]),
+      foot: [["Net Salary", formatCurrency(item.net_salary), "", ""]],
+      footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
+    });
+
+    let endY = (doc as any).lastAutoTable.finalY + 10;
+    if (item.notes) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Notes: ${item.notes}`, 15, endY, { maxWidth: 180 });
+      endY += 10;
+    }
+    if (s.signatory_name) {
+      doc.text(`Authorised by: ${s.signatory_name}`, 150, endY + 20);
+    }
+    if (s.footer_note) {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "italic");
+      doc.text(s.footer_note, 105, 285, { align: "center", maxWidth: 180 });
+    }
+
     const fileName = `payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`;
     return { doc, fileName, staffName };
   };
@@ -1376,10 +1449,50 @@ export const AttendanceDashboard = () => {
     setBaseSalary(String(item.base_salary ?? ""));
     setAllowances(String(item.allowances ?? ""));
     setDeductions(String(item.deductions ?? ""));
+    setPf(String((item as any).pf ?? ""));
+    setEsi(String((item as any).esi ?? ""));
     setPayrollStatus(item.status);
     setPayrollNotes(item.notes ?? "");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     toast({ title: "Editing payslip", description: "Update the values and save to overwrite this record." });
+  };
+
+  const savePayslipSettings = async () => {
+    if (!currentUserId) return;
+    setSavingSettings(true);
+    try {
+      const { error } = await supabase.from("payslip_settings").upsert(
+        { user_id: currentUserId, ...payslipSettings },
+        { onConflict: "user_id" },
+      );
+      if (error) throw error;
+      toast({ title: "Settings saved", description: "Your payslip layout will use these values from now on." });
+      setSettingsOpen(false);
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/logo-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("payslip-logos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("payslip-logos").getPublicUrl(path);
+      setPayslipSettings((prev) => ({ ...prev, logo_url: data.publicUrl }));
+      toast({ title: "Logo uploaded", description: "Don't forget to save settings." });
+    } catch (error) {
+      toast({ title: "Logo upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = "";
+    }
   };
 
 
