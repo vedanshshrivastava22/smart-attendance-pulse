@@ -1551,7 +1551,7 @@ export const AttendanceDashboard = () => {
                   <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <CardTitle className="font-display text-2xl">Teacher panel</CardTitle>
-                      <CardDescription>Mark present, absent, leave, or holiday — then save all and send WhatsApp to every parent in one click.</CardDescription>
+                      <CardDescription>Mark present, absent, leave, or holiday — then send WhatsApp by attendance group.</CardDescription>
                     </div>
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
                   </CardHeader>
@@ -1563,7 +1563,7 @@ export const AttendanceDashboard = () => {
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!filteredStudents.length}>
                         <MessageCircle className="h-4 w-4" />
-                        Send WhatsApp to all
+                        WhatsApp all ({filteredStudents.length})
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
                         <Download className="h-4 w-4" />
@@ -1576,10 +1576,11 @@ export const AttendanceDashboard = () => {
                             size="sm"
                             variant="ghost"
                             className="h-8 rounded-full border border-border/60 px-3 text-xs"
+                            disabled={!bulkStatusCounts[status]}
                             onClick={() => sendBulkWhatsApp(status)}
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
-                            Only {attendanceLabels[status].toLowerCase()}
+                            {attendanceLabels[status]} ({bulkStatusCounts[status]})
                           </Button>
                         ))}
                       </div>
