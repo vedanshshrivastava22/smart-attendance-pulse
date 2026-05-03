@@ -2121,6 +2121,10 @@ export const AttendanceDashboard = () => {
                           <Input type="number" min="0" step="1" value={allowances} onChange={(e) => setAllowances(e.target.value)} placeholder="Allowances" className="bg-background/80" />
                           <Input type="number" min="0" step="1" value={deductions} onChange={(e) => setDeductions(e.target.value)} placeholder="Deductions" className="bg-background/80" />
                         </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Input type="number" min="0" step="1" value={pf} onChange={(e) => setPf(e.target.value)} placeholder="PF" className="bg-background/80" />
+                          <Input type="number" min="0" step="1" value={esi} onChange={(e) => setEsi(e.target.value)} placeholder="ESI" className="bg-background/80" />
+                        </div>
                         <Input value={payrollNotes} onChange={(e) => setPayrollNotes(e.target.value)} placeholder="Notes, bonus, advance, or payment reference" className="bg-background/80" />
                         <Button type="submit" className="w-full" disabled={savingPayroll || !payrollStaffId}>
                           <IndianRupee className="h-4 w-4" />
