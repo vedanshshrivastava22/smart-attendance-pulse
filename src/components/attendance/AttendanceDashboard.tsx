@@ -404,6 +404,23 @@ export const AttendanceDashboard = () => {
 
   const dailySummary = useMemo(() => deriveDailySummary(dailyRecords), [dailyRecords]);
 
+  const dailyRecordByStudentId = useMemo(() => new Map(dailyRecords.map((record) => [record.student_id, record])), [dailyRecords]);
+
+  const getStudentAttendanceStatus = (student: StudentWithAnalytics) =>
+    attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present";
+
+  const bulkStatusCounts = useMemo(
+    () =>
+      attendanceStatuses.reduce(
+        (counts, status) => ({
+          ...counts,
+          [status]: filteredStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
+        }),
+        { present: 0, absent: 0, leave: 0, holiday: 0 } as Record<AttendanceStatus, number>,
+      ),
+    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+  );
+
   const payrollOverview = useMemo(() => {
     const monthItems = payroll.filter((item) => item.payroll_month?.slice(0, 7) === payrollMonth.slice(0, 7));
     return {
@@ -532,10 +549,10 @@ export const AttendanceDashboard = () => {
     students
       .filter((student) => student.class_id === selectedClassId)
       .forEach((student) => {
-        nextDrafts[student.id] = attendanceDrafts[student.id] ?? "present";
+        nextDrafts[student.id] = dailyRecordByStudentId.get(student.id)?.status ?? "present";
       });
     setAttendanceDrafts((current) => ({ ...current, ...nextDrafts }));
-  }, [selectedClassId, students]);
+  }, [dailyRecordByStudentId, selectedClassId, students]);
 
   useEffect(() => {
     setActivePanel(isAdmin ? "admin" : "teacher");
@@ -782,7 +799,7 @@ export const AttendanceDashboard = () => {
   const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
     if (!filteredStudents.length) return;
     const targets = filteredStudents.filter((student) => {
-      const status = attendanceDrafts[student.id] ?? "present";
+      const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
     if (!targets.length) {
@@ -792,7 +809,7 @@ export const AttendanceDashboard = () => {
     const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
-      const status = attendanceDrafts[student.id] ?? "present";
+      const status = getStudentAttendanceStatus(student);
       const message = buildAttendanceMessage({
         studentName: student.full_name,
         parentName: student.parent_name,
@@ -814,19 +831,18 @@ export const AttendanceDashboard = () => {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    messages.forEach((item, index) => {
-      window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
-    });
+    const combinedMessage = messages.map((item, index) => `${index + 1}. ${item.name}\n${item.message}`).join("\n\n--------------------\n\n");
+    window.open(buildWhatsAppUrl(messages[0].phone, combinedMessage), "_blank", "noopener,noreferrer");
     toast({
-      title: `Opening WhatsApp for ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
+      title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
       description: skipped
-        ? `${skipped} skipped (no phone). If only one chat opens, allow pop-ups for this app and click again.`
-        : "If only one chat opens, allow pop-ups for this app and click again.",
+        ? `${skipped} skipped (no phone). One WhatsApp window opens with all messages together.`
+        : "One WhatsApp window opens with all messages together, so the browser will not block bulk sending.",
     });
   };
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
-    const status = attendanceDrafts[student.id] ?? "present";
+    const status = getStudentAttendanceStatus(student);
     const message = buildAttendanceMessage({
       studentName: student.full_name,
       parentName: student.parent_name,
@@ -1535,7 +1551,7 @@ export const AttendanceDashboard = () => {
                   <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <CardTitle className="font-display text-2xl">Teacher panel</CardTitle>
-                      <CardDescription>Mark present, absent, leave, or holiday — then save all and send WhatsApp to every parent in one click.</CardDescription>
+                      <CardDescription>Mark present, absent, leave, or holiday — then send WhatsApp by attendance group.</CardDescription>
                     </div>
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
                   </CardHeader>
@@ -1547,7 +1563,7 @@ export const AttendanceDashboard = () => {
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!filteredStudents.length}>
                         <MessageCircle className="h-4 w-4" />
-                        Send WhatsApp to all
+                        WhatsApp all ({filteredStudents.length})
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
                         <Download className="h-4 w-4" />
@@ -1560,10 +1576,11 @@ export const AttendanceDashboard = () => {
                             size="sm"
                             variant="ghost"
                             className="h-8 rounded-full border border-border/60 px-3 text-xs"
+                            disabled={!bulkStatusCounts[status]}
                             onClick={() => sendBulkWhatsApp(status)}
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
-                            Only {attendanceLabels[status].toLowerCase()}
+                            {attendanceLabels[status]} ({bulkStatusCounts[status]})
                           </Button>
                         ))}
                       </div>
