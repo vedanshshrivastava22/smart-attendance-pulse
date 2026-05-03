@@ -348,8 +348,14 @@ export const AttendanceDashboard = () => {
   const [baseSalary, setBaseSalary] = useState("");
   const [allowances, setAllowances] = useState("");
   const [deductions, setDeductions] = useState("");
+  const [pf, setPf] = useState("");
+  const [esi, setEsi] = useState("");
   const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
   const [payrollNotes, setPayrollNotes] = useState("");
+  const [payslipSettings, setPayslipSettings] = useState<typeof defaultPayslipSettings>(defaultPayslipSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
     if (typeof window === "undefined") return mergeMessageTemplates();
