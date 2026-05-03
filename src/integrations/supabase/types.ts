@@ -278,6 +278,54 @@ export type Database = {
           },
         ]
       }
+      payslip_settings: {
+        Row: {
+          address_line: string | null
+          created_at: string
+          footer_note: string | null
+          header_note: string | null
+          header_title: string
+          id: string
+          logo_url: string | null
+          organization_name: string
+          show_esi: boolean
+          show_pf: boolean
+          signatory_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address_line?: string | null
+          created_at?: string
+          footer_note?: string | null
+          header_note?: string | null
+          header_title?: string
+          id?: string
+          logo_url?: string | null
+          organization_name?: string
+          show_esi?: boolean
+          show_pf?: boolean
+          signatory_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address_line?: string | null
+          created_at?: string
+          footer_note?: string | null
+          header_note?: string | null
+          header_title?: string
+          id?: string
+          logo_url?: string | null
+          organization_name?: string
+          show_esi?: boolean
+          show_pf?: boolean
+          signatory_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -386,11 +434,13 @@ export type Database = {
           created_at: string
           created_by: string | null
           deductions: number
+          esi: number
           id: string
           net_salary: number | null
           notes: string | null
           paid_on: string | null
           payroll_month: string
+          pf: number
           staff_profile_id: string
           status: Database["public"]["Enums"]["payroll_status"]
           updated_at: string
@@ -401,11 +451,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           deductions?: number
+          esi?: number
           id?: string
           net_salary?: number | null
           notes?: string | null
           paid_on?: string | null
           payroll_month: string
+          pf?: number
           staff_profile_id: string
           status?: Database["public"]["Enums"]["payroll_status"]
           updated_at?: string
@@ -416,11 +468,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           deductions?: number
+          esi?: number
           id?: string
           net_salary?: number | null
           notes?: string | null
           paid_on?: string | null
           payroll_month?: string
+          pf?: number
           staff_profile_id?: string
           status?: Database["public"]["Enums"]["payroll_status"]
           updated_at?: string

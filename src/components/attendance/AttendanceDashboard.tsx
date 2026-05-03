@@ -26,6 +26,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
@@ -77,6 +81,19 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { profiles?: Pick<Profile, "full_name" | "phone" | "user_id"> | null };
 type StaffRole = Database["public"]["Enums"]["app_role"];
 type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
+type PayslipSettings = Database["public"]["Tables"]["payslip_settings"]["Row"];
+
+const defaultPayslipSettings = {
+  organization_name: "Your School",
+  address_line: "",
+  header_title: "Salary Payslip",
+  header_note: "",
+  footer_note: "This is a system-generated payslip.",
+  signatory_name: "",
+  logo_url: "",
+  show_pf: true,
+  show_esi: true,
+};
 
 type StudentWithAnalytics = Student & {
   analytics?: AttendanceAnalytics | null;
@@ -331,8 +348,14 @@ export const AttendanceDashboard = () => {
   const [baseSalary, setBaseSalary] = useState("");
   const [allowances, setAllowances] = useState("");
   const [deductions, setDeductions] = useState("");
+  const [pf, setPf] = useState("");
+  const [esi, setEsi] = useState("");
   const [payrollStatus, setPayrollStatus] = useState<PayrollStatus>("draft");
   const [payrollNotes, setPayrollNotes] = useState("");
+  const [payslipSettings, setPayslipSettings] = useState<typeof defaultPayslipSettings>(defaultPayslipSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
     if (typeof window === "undefined") return mergeMessageTemplates();
@@ -456,7 +479,7 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
@@ -468,6 +491,7 @@ export const AttendanceDashboard = () => {
       supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
+      supabase.from("payslip_settings").select("*").eq("user_id", userId).maybeSingle(),
     ]);
 
     const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
@@ -489,6 +513,20 @@ export const AttendanceDashboard = () => {
     setImports(importsRes.data ?? []);
     setResults(resultsRes.data ?? []);
     setPayroll((payrollRes.data ?? []) as SalaryPayroll[]);
+    if (settingsRes.data) {
+      const d = settingsRes.data as PayslipSettings;
+      setPayslipSettings({
+        organization_name: d.organization_name ?? defaultPayslipSettings.organization_name,
+        address_line: d.address_line ?? "",
+        header_title: d.header_title ?? defaultPayslipSettings.header_title,
+        header_note: d.header_note ?? "",
+        footer_note: d.footer_note ?? "",
+        signatory_name: d.signatory_name ?? "",
+        logo_url: d.logo_url ?? "",
+        show_pf: d.show_pf ?? true,
+        show_esi: d.show_esi ?? true,
+      });
+    }
     setLoading(false);
   };
 
@@ -1235,6 +1273,8 @@ export const AttendanceDashboard = () => {
           base_salary: Number(baseSalary || 0),
           allowances: Number(allowances || 0),
           deductions: Number(deductions || 0),
+          pf: Number(pf || 0),
+          esi: Number(esi || 0),
           status: payrollStatus,
           paid_on: payrollStatus === "paid" ? todayDate() : null,
           notes: payrollNotes || null,
@@ -1248,6 +1288,8 @@ export const AttendanceDashboard = () => {
       setBaseSalary("");
       setAllowances("");
       setDeductions("");
+      setPf("");
+      setEsi("");
       setPayrollNotes("");
       setPayrollStatus("draft");
       await refreshAll();
@@ -1260,25 +1302,98 @@ export const AttendanceDashboard = () => {
 
   const buildPayslipDoc = (item: SalaryPayroll) => {
     const staffName = item.profiles?.full_name || "Staff member";
+    const s = payslipSettings;
     const doc = new jsPDF();
+    let y = 16;
+
+    if (s.logo_url) {
+      try {
+        doc.addImage(s.logo_url, "PNG", 15, y, 24, 24);
+      } catch {
+        // ignore image errors
+      }
+    }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.text("Salary Payslip", 20, 24);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Staff: ${staffName}`, 20, 42);
-    doc.text(`Phone: ${item.profiles?.phone || "-"}`, 20, 50);
-    doc.text(`Month: ${format(new Date(item.payroll_month), "MMMM yyyy")}`, 20, 58);
-    doc.text(`Status: ${payrollStatusLabels[item.status]}`, 20, 66);
-    doc.line(20, 76, 190, 76);
-    doc.text(`Base salary: ${formatCurrency(item.base_salary)}`, 24, 90);
-    doc.text(`Allowances: ${formatCurrency(item.allowances)}`, 24, 102);
-    doc.text(`Deductions: ${formatCurrency(item.deductions)}`, 24, 114);
+    doc.setFontSize(16);
+    doc.text(s.organization_name || "Your School", s.logo_url ? 44 : 15, y + 8);
+    if (s.address_line) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(s.address_line, s.logo_url ? 44 : 15, y + 16, { maxWidth: 150 });
+    }
+    y += 32;
+
     doc.setFont("helvetica", "bold");
-    doc.text(`Net salary: ${formatCurrency(item.net_salary)}`, 24, 130);
+    doc.setFontSize(14);
+    doc.text(s.header_title || "Salary Payslip", 105, y, { align: "center" });
+    y += 6;
+
+    if (s.header_note) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.text(s.header_note, 105, y + 4, { align: "center", maxWidth: 170 });
+      y += 8;
+    }
+
     doc.setFont("helvetica", "normal");
-    doc.text(`Paid on: ${item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"}`, 24, 144);
-    if (item.notes) doc.text(`Notes: ${item.notes}`, 24, 158, { maxWidth: 160 });
+    doc.setFontSize(10);
+    autoTable(doc, {
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: [
+        ["Staff name", staffName],
+        ["Phone", item.profiles?.phone || "-"],
+        ["Month", format(new Date(item.payroll_month), "MMMM yyyy")],
+        ["Status", payrollStatusLabels[item.status]],
+        ["Paid on", item.paid_on ? format(new Date(item.paid_on), "dd MMM yyyy") : "Pending"],
+      ],
+    });
+
+    const earningsRows: [string, string][] = [
+      ["Base salary", formatCurrency(item.base_salary)],
+      ["Allowances", formatCurrency(item.allowances)],
+    ];
+    const deductionRows: [string, string][] = [
+      ["Deductions", formatCurrency(item.deductions)],
+    ];
+    if (s.show_pf) deductionRows.push(["PF", formatCurrency((item as any).pf ?? 0)]);
+    if (s.show_esi) deductionRows.push(["ESI", formatCurrency((item as any).esi ?? 0)]);
+
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 6,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2.5 },
+      head: [["Earnings", "Amount", "Deductions", "Amount"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: Array.from({ length: Math.max(earningsRows.length, deductionRows.length) }, (_, i) => [
+        earningsRows[i]?.[0] ?? "",
+        earningsRows[i]?.[1] ?? "",
+        deductionRows[i]?.[0] ?? "",
+        deductionRows[i]?.[1] ?? "",
+      ]),
+      foot: [["Net Salary", formatCurrency(item.net_salary), "", ""]],
+      footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
+    });
+
+    let endY = (doc as any).lastAutoTable.finalY + 10;
+    if (item.notes) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Notes: ${item.notes}`, 15, endY, { maxWidth: 180 });
+      endY += 10;
+    }
+    if (s.signatory_name) {
+      doc.text(`Authorised by: ${s.signatory_name}`, 150, endY + 20);
+    }
+    if (s.footer_note) {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "italic");
+      doc.text(s.footer_note, 105, 285, { align: "center", maxWidth: 180 });
+    }
+
     const fileName = `payslip-${staffName.replace(/\s+/g, "-").toLowerCase()}-${item.payroll_month.slice(0, 7)}.pdf`;
     return { doc, fileName, staffName };
   };
@@ -1334,10 +1449,50 @@ export const AttendanceDashboard = () => {
     setBaseSalary(String(item.base_salary ?? ""));
     setAllowances(String(item.allowances ?? ""));
     setDeductions(String(item.deductions ?? ""));
+    setPf(String((item as any).pf ?? ""));
+    setEsi(String((item as any).esi ?? ""));
     setPayrollStatus(item.status);
     setPayrollNotes(item.notes ?? "");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     toast({ title: "Editing payslip", description: "Update the values and save to overwrite this record." });
+  };
+
+  const savePayslipSettings = async () => {
+    if (!currentUserId) return;
+    setSavingSettings(true);
+    try {
+      const { error } = await supabase.from("payslip_settings").upsert(
+        { user_id: currentUserId, ...payslipSettings },
+        { onConflict: "user_id" },
+      );
+      if (error) throw error;
+      toast({ title: "Settings saved", description: "Your payslip layout will use these values from now on." });
+      setSettingsOpen(false);
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/logo-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("payslip-logos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("payslip-logos").getPublicUrl(path);
+      setPayslipSettings((prev) => ({ ...prev, logo_url: data.publicUrl }));
+      toast({ title: "Logo uploaded", description: "Don't forget to save settings." });
+    } catch (error) {
+      toast({ title: "Logo upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = "";
+    }
   };
 
 
@@ -1907,9 +2062,15 @@ export const AttendanceDashboard = () => {
 
               {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-                  <CardHeader>
-                    <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
-                    <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                  <CardHeader className="flex-row items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
+                      <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+                      <Settings className="h-4 w-4" />
+                      Payslip settings
+                    </Button>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -1959,6 +2120,10 @@ export const AttendanceDashboard = () => {
                           <Input type="number" min="0" step="1" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} placeholder="Base salary" className="bg-background/80" required />
                           <Input type="number" min="0" step="1" value={allowances} onChange={(e) => setAllowances(e.target.value)} placeholder="Allowances" className="bg-background/80" />
                           <Input type="number" min="0" step="1" value={deductions} onChange={(e) => setDeductions(e.target.value)} placeholder="Deductions" className="bg-background/80" />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Input type="number" min="0" step="1" value={pf} onChange={(e) => setPf(e.target.value)} placeholder="PF" className="bg-background/80" />
+                          <Input type="number" min="0" step="1" value={esi} onChange={(e) => setEsi(e.target.value)} placeholder="ESI" className="bg-background/80" />
                         </div>
                         <Input value={payrollNotes} onChange={(e) => setPayrollNotes(e.target.value)} placeholder="Notes, bonus, advance, or payment reference" className="bg-background/80" />
                         <Button type="submit" className="w-full" disabled={savingPayroll || !payrollStaffId}>
@@ -2019,6 +2184,62 @@ export const AttendanceDashboard = () => {
                     )}
                   </CardContent>
                 </Card>
+
+                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                  <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Customize salary slip</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label>Organization name</Label>
+                        <Input value={payslipSettings.organization_name} onChange={(e) => setPayslipSettings({ ...payslipSettings, organization_name: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Address line</Label>
+                        <Input value={payslipSettings.address_line} onChange={(e) => setPayslipSettings({ ...payslipSettings, address_line: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Header title</Label>
+                        <Input value={payslipSettings.header_title} onChange={(e) => setPayslipSettings({ ...payslipSettings, header_title: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Header note (subtitle)</Label>
+                        <Textarea rows={2} value={payslipSettings.header_note} onChange={(e) => setPayslipSettings({ ...payslipSettings, header_note: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Footer note</Label>
+                        <Textarea rows={2} value={payslipSettings.footer_note} onChange={(e) => setPayslipSettings({ ...payslipSettings, footer_note: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Authorised signatory name</Label>
+                        <Input value={payslipSettings.signatory_name} onChange={(e) => setPayslipSettings({ ...payslipSettings, signatory_name: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Logo image</Label>
+                        <Input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                        {payslipSettings.logo_url && (
+                          <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                            <img src={payslipSettings.logo_url} alt="Logo preview" className="h-12 w-12 rounded object-contain" />
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setPayslipSettings({ ...payslipSettings, logo_url: "" })}>Remove</Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                        <Label htmlFor="show_pf">Show PF row</Label>
+                        <Switch id="show_pf" checked={payslipSettings.show_pf} onCheckedChange={(v) => setPayslipSettings({ ...payslipSettings, show_pf: v })} />
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                        <Label htmlFor="show_esi">Show ESI row</Label>
+                        <Switch id="show_esi" checked={payslipSettings.show_esi} onCheckedChange={(v) => setPayslipSettings({ ...payslipSettings, show_esi: v })} />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancel</Button>
+                      <Button onClick={savePayslipSettings} disabled={savingSettings}>{savingSettings ? "Saving..." : "Save settings"}</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>}
 
               <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
