@@ -479,7 +479,7 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
@@ -491,6 +491,7 @@ export const AttendanceDashboard = () => {
       supabase.from("excel_imports").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
+      supabase.from("payslip_settings").select("*").eq("user_id", userId).maybeSingle(),
     ]);
 
     const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
@@ -512,6 +513,20 @@ export const AttendanceDashboard = () => {
     setImports(importsRes.data ?? []);
     setResults(resultsRes.data ?? []);
     setPayroll((payrollRes.data ?? []) as SalaryPayroll[]);
+    if (settingsRes.data) {
+      const d = settingsRes.data as PayslipSettings;
+      setPayslipSettings({
+        organization_name: d.organization_name ?? defaultPayslipSettings.organization_name,
+        address_line: d.address_line ?? "",
+        header_title: d.header_title ?? defaultPayslipSettings.header_title,
+        header_note: d.header_note ?? "",
+        footer_note: d.footer_note ?? "",
+        signatory_name: d.signatory_name ?? "",
+        logo_url: d.logo_url ?? "",
+        show_pf: d.show_pf ?? true,
+        show_esi: d.show_esi ?? true,
+      });
+    }
     setLoading(false);
   };
 
