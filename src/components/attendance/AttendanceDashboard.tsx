@@ -2184,6 +2184,62 @@ export const AttendanceDashboard = () => {
                     )}
                   </CardContent>
                 </Card>
+
+                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                  <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Customize salary slip</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label>Organization name</Label>
+                        <Input value={payslipSettings.organization_name} onChange={(e) => setPayslipSettings({ ...payslipSettings, organization_name: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Address line</Label>
+                        <Input value={payslipSettings.address_line} onChange={(e) => setPayslipSettings({ ...payslipSettings, address_line: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Header title</Label>
+                        <Input value={payslipSettings.header_title} onChange={(e) => setPayslipSettings({ ...payslipSettings, header_title: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Header note (subtitle)</Label>
+                        <Textarea rows={2} value={payslipSettings.header_note} onChange={(e) => setPayslipSettings({ ...payslipSettings, header_note: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Footer note</Label>
+                        <Textarea rows={2} value={payslipSettings.footer_note} onChange={(e) => setPayslipSettings({ ...payslipSettings, footer_note: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Authorised signatory name</Label>
+                        <Input value={payslipSettings.signatory_name} onChange={(e) => setPayslipSettings({ ...payslipSettings, signatory_name: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Logo image</Label>
+                        <Input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                        {payslipSettings.logo_url && (
+                          <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                            <img src={payslipSettings.logo_url} alt="Logo preview" className="h-12 w-12 rounded object-contain" />
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setPayslipSettings({ ...payslipSettings, logo_url: "" })}>Remove</Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                        <Label htmlFor="show_pf">Show PF row</Label>
+                        <Switch id="show_pf" checked={payslipSettings.show_pf} onCheckedChange={(v) => setPayslipSettings({ ...payslipSettings, show_pf: v })} />
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                        <Label htmlFor="show_esi">Show ESI row</Label>
+                        <Switch id="show_esi" checked={payslipSettings.show_esi} onCheckedChange={(v) => setPayslipSettings({ ...payslipSettings, show_esi: v })} />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancel</Button>
+                      <Button onClick={savePayslipSettings} disabled={savingSettings}>{savingSettings ? "Saving..." : "Save settings"}</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>}
 
               <TabsContent value="analytics" className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
