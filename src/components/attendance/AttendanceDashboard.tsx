@@ -2062,9 +2062,15 @@ export const AttendanceDashboard = () => {
 
               {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
-                  <CardHeader>
-                    <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
-                    <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                  <CardHeader className="flex-row items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle className="font-display text-2xl">Salary distribution</CardTitle>
+                      <CardDescription>{isAdmin ? "Create monthly payroll and download staff payslips." : "Your salary records and payslips appear here."}</CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+                      <Settings className="h-4 w-4" />
+                      Payslip settings
+                    </Button>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-3">
