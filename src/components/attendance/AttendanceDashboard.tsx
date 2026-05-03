@@ -799,7 +799,7 @@ export const AttendanceDashboard = () => {
   const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
     if (!filteredStudents.length) return;
     const targets = filteredStudents.filter((student) => {
-      const status = attendanceDrafts[student.id] ?? "present";
+      const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
     if (!targets.length) {
@@ -809,7 +809,7 @@ export const AttendanceDashboard = () => {
     const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
-      const status = attendanceDrafts[student.id] ?? "present";
+      const status = getStudentAttendanceStatus(student);
       const message = buildAttendanceMessage({
         studentName: student.full_name,
         parentName: student.parent_name,
@@ -831,19 +831,18 @@ export const AttendanceDashboard = () => {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    messages.forEach((item, index) => {
-      window.open(buildWhatsAppUrl(item.phone, item.message), `whatsapp-parent-${Date.now()}-${index}`, "noopener,noreferrer");
-    });
+    const combinedMessage = messages.map((item, index) => `${index + 1}. ${item.name}\n${item.message}`).join("\n\n--------------------\n\n");
+    window.open(buildWhatsAppUrl(messages[0].phone, combinedMessage), "_blank", "noopener,noreferrer");
     toast({
-      title: `Opening WhatsApp for ${messages.length} parent${messages.length === 1 ? "" : "s"}`,
+      title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
       description: skipped
-        ? `${skipped} skipped (no phone). If only one chat opens, allow pop-ups for this app and click again.`
-        : "If only one chat opens, allow pop-ups for this app and click again.",
+        ? `${skipped} skipped (no phone). One WhatsApp window opens with all messages together.`
+        : "One WhatsApp window opens with all messages together, so the browser will not block bulk sending.",
     });
   };
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
-    const status = attendanceDrafts[student.id] ?? "present";
+    const status = getStudentAttendanceStatus(student);
     const message = buildAttendanceMessage({
       studentName: student.full_name,
       parentName: student.parent_name,
