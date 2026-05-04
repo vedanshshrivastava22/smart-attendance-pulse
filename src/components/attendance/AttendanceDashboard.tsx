@@ -566,6 +566,19 @@ export const AttendanceDashboard = () => {
         show_esi: d.show_esi ?? true,
       });
     }
+    if (brandingRes.data) {
+      const b = brandingRes.data as AppBranding;
+      const next = {
+        id: b.id,
+        organization_name: b.organization_name ?? defaultBranding.organization_name,
+        tagline: b.tagline ?? defaultBranding.tagline,
+        logo_url: b.logo_url ?? "",
+      };
+      setBranding(next);
+      setBrandingDraft(next);
+    }
+    setTeachers((teachersRes.data ?? []) as Teacher[]);
+    setExamResults((examResultsRes.data ?? []) as ExamResult[]);
     setLoading(false);
   };
 
