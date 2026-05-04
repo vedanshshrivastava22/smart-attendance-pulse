@@ -82,6 +82,18 @@ type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { p
 type StaffRole = Database["public"]["Enums"]["app_role"];
 type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
 type PayslipSettings = Database["public"]["Tables"]["payslip_settings"]["Row"];
+type AppBranding = Database["public"]["Tables"]["app_branding"]["Row"];
+type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
+type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
+
+type ResultSubject = { name: string; max: number; obtained: number };
+
+const defaultBranding = {
+  id: "" as string,
+  organization_name: "Smart Attendance",
+  tagline: "A delightful command center for teachers, admins, and parents.",
+  logo_url: "" as string,
+};
 
 const defaultPayslipSettings = {
   organization_name: "Your School",
