@@ -369,6 +369,30 @@ export const AttendanceDashboard = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Branding (front-page admin settings)
+  const [branding, setBranding] = useState<typeof defaultBranding>(defaultBranding);
+  const [brandingDraft, setBrandingDraft] = useState<typeof defaultBranding>(defaultBranding);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [uploadingBrandLogo, setUploadingBrandLogo] = useState(false);
+
+  // Teachers
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teacherDraft, setTeacherDraft] = useState<{ id?: string; full_name: string; age: string; position: string; classes_taught: string; image_url: string }>({ full_name: "", age: "", position: "", classes_taught: "", image_url: "" });
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [uploadingTeacherImg, setUploadingTeacherImg] = useState(false);
+
+  // Exam results
+  const [examResults, setExamResults] = useState<ExamResult[]>([]);
+  const [resultStudentId, setResultStudentId] = useState("");
+  const [resultExamName, setResultExamName] = useState("Terminal Exam");
+  const [resultExamDate, setResultExamDate] = useState(todayDate());
+  const [resultSubjects, setResultSubjects] = useState<ResultSubject[]>([{ name: "", max: 100, obtained: 0 }]);
+  const [resultGrade, setResultGrade] = useState<"Pass" | "Fail" | "Compartment">("Pass");
+  const [resultFeedback, setResultFeedback] = useState("");
+  const [savingResult, setSavingResult] = useState(false);
+  const [editingResultId, setEditingResultId] = useState<string | null>(null);
+
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
     if (typeof window === "undefined") return mergeMessageTemplates();
     try {
