@@ -515,7 +515,7 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes, brandingRes, teachersRes, examResultsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
@@ -528,6 +528,9 @@ export const AttendanceDashboard = () => {
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
       supabase.from("payslip_settings").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("app_branding").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle(),
+      supabase.from("teachers").select("*").order("teacher_code", { ascending: true }),
+      supabase.from("exam_results").select("*").order("created_at", { ascending: false }).limit(50),
     ]);
 
     const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
