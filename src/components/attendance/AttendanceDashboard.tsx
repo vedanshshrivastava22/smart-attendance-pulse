@@ -2440,6 +2440,191 @@ export const AttendanceDashboard = () => {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="marksheet" className="grid gap-6 xl:grid-cols-[1fr,1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">{editingResultId ? "Edit marksheet" : "Add marksheet"}</CardTitle>
+                    <CardDescription>Enter subject-wise marks, grade, and feedback. Branding (logo, organization name, tagline) is taken from the front-page settings.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Student</Label>
+                        <Select value={resultStudentId} onValueChange={setResultStudentId}>
+                          <SelectTrigger className="bg-background/80"><SelectValue placeholder="Select student" /></SelectTrigger>
+                          <SelectContent>
+                            {filteredStudents.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.full_name} (Roll {s.roll_number})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Exam name</Label>
+                        <Input value={resultExamName} onChange={(e) => setResultExamName(e.target.value)} className="bg-background/80" />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Exam date</Label>
+                        <Input type="date" value={resultExamDate} onChange={(e) => setResultExamDate(e.target.value)} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Overall result</Label>
+                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as any)}>
+                          <SelectTrigger className="bg-background/80"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Pass">Pass</SelectItem>
+                            <SelectItem value="Fail">Fail</SelectItem>
+                            <SelectItem value="Compartment">Compartment</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Subjects</Label>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setResultSubjects((p) => [...p, { name: "", max: 100, obtained: 0 }])}>+ Add subject</Button>
+                      </div>
+                      <div className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                        <span>Subject</span><span>Total</span><span>Obtained</span><span></span>
+                      </div>
+                      {resultSubjects.map((s, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2">
+                          <Input value={s.name} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="e.g. Math" className="bg-background/80" />
+                          <Input type="number" min="0" value={s.max} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, max: Number(e.target.value) } : x))} className="bg-background/80" />
+                          <Input type="number" min="0" value={s.obtained} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, obtained: Number(e.target.value) } : x))} className="bg-background/80" />
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setResultSubjects((p) => p.filter((_, i) => i !== idx))}>×</Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Teacher's feedback</Label>
+                      <Textarea rows={3} value={resultFeedback} onChange={(e) => setResultFeedback(e.target.value)} placeholder="Strengths, areas to improve, encouragement..." className="bg-background/80" />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button onClick={saveExamResult} disabled={savingResult} className="flex-1">{savingResult ? "Saving..." : editingResultId ? "Update marksheet" : "Save marksheet"}</Button>
+                      {editingResultId && <Button variant="outline" onClick={resetResultDraft}>Cancel</Button>}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Saved marksheets</CardTitle>
+                    <CardDescription>Download a branded PDF or share via WhatsApp.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {examResults.length ? examResults.map((r) => {
+                      const stud = students.find((s) => s.id === r.student_id);
+                      return (
+                        <div key={r.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold">{stud?.full_name || "Student"} <span className="text-xs text-muted-foreground">· Roll {stud?.roll_number}</span></p>
+                              <p className="text-sm text-muted-foreground">{r.exam_name} · {r.exam_date ? format(new Date(r.exam_date), "dd MMM yyyy") : ""}</p>
+                            </div>
+                            <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", r.overall_grade === "Pass" ? toneStyles.success : r.overall_grade === "Fail" ? toneStyles.danger : toneStyles.warning)}>{r.overall_grade}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground">{r.total_obtained} / {r.total_max} ({r.total_max ? Math.round((Number(r.total_obtained) / Number(r.total_max)) * 100) : 0}%)</p>
+                          {r.feedback && <p className="mt-1 text-sm italic text-muted-foreground">"{r.feedback}"</p>}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadMarksheet(r)}><Download className="h-4 w-4" />PDF</Button>
+                            <Button variant="outline" size="sm" onClick={() => shareMarksheetWhatsApp(r)}><MessageCircle className="h-4 w-4" />WhatsApp</Button>
+                            <Button variant="outline" size="sm" onClick={() => editExamResult(r)}><UserCog className="h-4 w-4" />Edit</Button>
+                            {isAdmin && <Button variant="outline" size="sm" onClick={() => deleteExamResult(r)}>Delete</Button>}
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No marksheets yet. Save one on the left.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="teachers" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">{teacherDraft.id ? "Edit teacher" : "Add teacher"}</CardTitle>
+                    <CardDescription>{isAdmin ? "Teacher ID is generated automatically when you save." : "Only Admin can add or edit teachers."}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Full name</Label>
+                      <Input value={teacherDraft.full_name} onChange={(e) => setTeacherDraft({ ...teacherDraft, full_name: e.target.value })} disabled={!isAdmin} className="bg-background/80" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Age</Label>
+                        <Input type="number" value={teacherDraft.age} onChange={(e) => setTeacherDraft({ ...teacherDraft, age: e.target.value })} disabled={!isAdmin} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Position</Label>
+                        <Input value={teacherDraft.position} onChange={(e) => setTeacherDraft({ ...teacherDraft, position: e.target.value })} placeholder="e.g. Senior Math Teacher" disabled={!isAdmin} className="bg-background/80" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Classes taught</Label>
+                      <Input value={teacherDraft.classes_taught} onChange={(e) => setTeacherDraft({ ...teacherDraft, classes_taught: e.target.value })} placeholder="e.g. 8, 9, 10" disabled={!isAdmin} className="bg-background/80" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Photo</Label>
+                      <Input type="file" accept="image/*" onChange={handleTeacherImageUpload} disabled={!isAdmin || uploadingTeacherImg} />
+                      {teacherDraft.image_url && (
+                        <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                          <img src={teacherDraft.image_url} alt="Teacher" className="h-16 w-16 rounded-full object-cover" />
+                          {isAdmin && <Button type="button" variant="ghost" size="sm" onClick={() => setTeacherDraft({ ...teacherDraft, image_url: "" })}>Remove</Button>}
+                        </div>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-2">
+                        <Button onClick={saveTeacher} disabled={savingTeacher} className="flex-1">{savingTeacher ? "Saving..." : teacherDraft.id ? "Update teacher" : "Generate ID & save"}</Button>
+                        {teacherDraft.id && <Button variant="outline" onClick={resetTeacherDraft}>Cancel</Button>}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Teachers directory</CardTitle>
+                    <CardDescription>{teachers.length} teacher{teachers.length === 1 ? "" : "s"} on record.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {teachers.length ? teachers.map((t) => (
+                      <div key={t.id} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                        {t.image_url ? (
+                          <img src={t.image_url} alt={t.full_name} className="h-14 w-14 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent/70 text-accent-foreground"><UserSquare2 className="h-6 w-6" /></div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-base font-semibold">{t.full_name}</p>
+                            <Badge variant="secondary">{t.teacher_code}</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{t.position || "Teacher"}{t.age ? ` · Age ${t.age}` : ""}</p>
+                          {t.classes_taught && <p className="text-sm text-muted-foreground">Classes: {t.classes_taught}</p>}
+                          {isAdmin && (
+                            <div className="mt-2 flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => editTeacher(t)}><UserCog className="h-4 w-4" />Edit</Button>
+                              <Button size="sm" variant="outline" onClick={() => deleteTeacher(t)}>Delete</Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No teachers added yet.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader className="flex-row items-start justify-between gap-3">
