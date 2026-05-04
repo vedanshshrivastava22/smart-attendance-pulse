@@ -2075,6 +2075,8 @@ export const AttendanceDashboard = () => {
                 <TabsTrigger value="attendance" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Attendance</TabsTrigger>
                 <TabsTrigger value="imports" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Excel & Sheets</TabsTrigger>
                 <TabsTrigger value="results" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Results</TabsTrigger>
+                <TabsTrigger value="marksheet" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Marksheets</TabsTrigger>
+                <TabsTrigger value="teachers" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Teachers</TabsTrigger>
                 {isAdmin && <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>}
                 <TabsTrigger value="analytics" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Analytics</TabsTrigger>
               </TabsList>
