@@ -1971,6 +1971,15 @@ export const AttendanceDashboard = () => {
             <CardHeader className="space-y-6 pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    {branding.logo_url && (
+                      <img src={branding.logo_url} alt={branding.organization_name} className="h-12 w-12 rounded-xl border border-border/70 bg-background/70 object-contain p-1" />
+                    )}
+                    <div>
+                      <h2 className="font-display text-2xl leading-tight">{branding.organization_name}</h2>
+                      {branding.tagline && <p className="text-xs text-muted-foreground">{branding.tagline}</p>}
+                    </div>
+                  </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                     <GraduationCap className="h-3.5 w-3.5" />
                     Attendance Command Center
@@ -1990,6 +1999,12 @@ export const AttendanceDashboard = () => {
                         <TabsTrigger value="admin" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><ShieldCheck className="mr-1.5 h-4 w-4" />Admin</TabsTrigger>
                       </TabsList>
                     </Tabs>
+                  )}
+                  {isAdmin && (
+                    <Button variant="outline" size="sm" onClick={() => { setBrandingDraft(branding); setBrandingOpen(true); }} className="sm:size-default">
+                      <Settings className="h-4 w-4" />
+                      Branding
+                    </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="sm:size-default">
                     <LogOut className="h-4 w-4" />
