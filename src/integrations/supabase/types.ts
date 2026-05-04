@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_branding: {
+        Row: {
+          created_at: string
+          id: string
+          logo_url: string | null
+          organization_name: string
+          tagline: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          organization_name?: string
+          tagline?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          organization_name?: string
+          tagline?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       attendance_records: {
         Row: {
           attendance_date: string
@@ -81,6 +111,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      exam_results: {
+        Row: {
+          class_id: string
+          created_at: string
+          created_by: string | null
+          exam_date: string | null
+          exam_name: string
+          feedback: string | null
+          id: string
+          overall_grade: string | null
+          student_id: string
+          subjects: Json
+          total_max: number
+          total_obtained: number
+          updated_at: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          created_by?: string | null
+          exam_date?: string | null
+          exam_name: string
+          feedback?: string | null
+          id?: string
+          overall_grade?: string | null
+          student_id: string
+          subjects?: Json
+          total_max?: number
+          total_obtained?: number
+          updated_at?: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          created_by?: string | null
+          exam_date?: string | null
+          exam_name?: string
+          feedback?: string | null
+          id?: string
+          overall_grade?: string | null
+          student_id?: string
+          subjects?: Json
+          total_max?: number
+          total_obtained?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       excel_imports: {
         Row: {
@@ -578,6 +656,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      teachers: {
+        Row: {
+          age: number | null
+          classes_taught: string | null
+          created_at: string
+          full_name: string
+          id: string
+          image_url: string | null
+          position: string | null
+          teacher_code: string
+          updated_at: string
+        }
+        Insert: {
+          age?: number | null
+          classes_taught?: string | null
+          created_at?: string
+          full_name: string
+          id?: string
+          image_url?: string | null
+          position?: string | null
+          teacher_code?: string
+          updated_at?: string
+        }
+        Update: {
+          age?: number | null
+          classes_taught?: string | null
+          created_at?: string
+          full_name?: string
+          id?: string
+          image_url?: string | null
+          position?: string | null
+          teacher_code?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
