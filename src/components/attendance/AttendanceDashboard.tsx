@@ -2921,6 +2921,38 @@ export const AttendanceDashboard = () => {
             </Card>
           </div>
         </section>
+
+        <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Front-page branding</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Organization name</Label>
+                <Input value={brandingDraft.organization_name} onChange={(e) => setBrandingDraft({ ...brandingDraft, organization_name: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tagline</Label>
+                <Textarea rows={2} value={brandingDraft.tagline} onChange={(e) => setBrandingDraft({ ...brandingDraft, tagline: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Logo image</Label>
+                <Input type="file" accept="image/*" onChange={handleBrandingLogoUpload} disabled={uploadingBrandLogo} />
+                {brandingDraft.logo_url && (
+                  <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                    <img src={brandingDraft.logo_url} alt="Logo preview" className="h-12 w-12 rounded object-contain" />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setBrandingDraft({ ...brandingDraft, logo_url: "" })}>Remove</Button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBrandingOpen(false)}>Cancel</Button>
+              <Button onClick={saveBranding} disabled={savingBranding}>{savingBranding ? "Saving..." : "Save & publish"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
