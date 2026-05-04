@@ -599,6 +599,14 @@ export const AttendanceDashboard = () => {
     });
 
     void init();
+    // Fetch public branding (works for signed-out visitors too)
+    void supabase.from("app_branding").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle().then(({ data }) => {
+      if (data) {
+        const next = { id: data.id, organization_name: data.organization_name, tagline: data.tagline, logo_url: data.logo_url ?? "" };
+        setBranding(next);
+        setBrandingDraft(next);
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
