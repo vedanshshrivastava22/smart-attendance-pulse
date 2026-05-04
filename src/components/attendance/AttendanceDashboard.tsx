@@ -82,6 +82,18 @@ type SalaryPayroll = Database["public"]["Tables"]["salary_payroll"]["Row"] & { p
 type StaffRole = Database["public"]["Enums"]["app_role"];
 type PayrollStatus = Database["public"]["Enums"]["payroll_status"];
 type PayslipSettings = Database["public"]["Tables"]["payslip_settings"]["Row"];
+type AppBranding = Database["public"]["Tables"]["app_branding"]["Row"];
+type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
+type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
+
+type ResultSubject = { name: string; max: number; obtained: number };
+
+const defaultBranding = {
+  id: "" as string,
+  organization_name: "Smart Attendance",
+  tagline: "A delightful command center for teachers, admins, and parents.",
+  logo_url: "" as string,
+};
 
 const defaultPayslipSettings = {
   organization_name: "Your School",
@@ -357,6 +369,30 @@ export const AttendanceDashboard = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Branding (front-page admin settings)
+  const [branding, setBranding] = useState<typeof defaultBranding>(defaultBranding);
+  const [brandingDraft, setBrandingDraft] = useState<typeof defaultBranding>(defaultBranding);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [uploadingBrandLogo, setUploadingBrandLogo] = useState(false);
+
+  // Teachers
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teacherDraft, setTeacherDraft] = useState<{ id?: string; full_name: string; age: string; position: string; classes_taught: string; image_url: string }>({ full_name: "", age: "", position: "", classes_taught: "", image_url: "" });
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [uploadingTeacherImg, setUploadingTeacherImg] = useState(false);
+
+  // Exam results
+  const [examResults, setExamResults] = useState<ExamResult[]>([]);
+  const [resultStudentId, setResultStudentId] = useState("");
+  const [resultExamName, setResultExamName] = useState("Terminal Exam");
+  const [resultExamDate, setResultExamDate] = useState(todayDate());
+  const [resultSubjects, setResultSubjects] = useState<ResultSubject[]>([{ name: "", max: 100, obtained: 0 }]);
+  const [resultGrade, setResultGrade] = useState<"Pass" | "Fail" | "Compartment">("Pass");
+  const [resultFeedback, setResultFeedback] = useState("");
+  const [savingResult, setSavingResult] = useState(false);
+  const [editingResultId, setEditingResultId] = useState<string | null>(null);
+
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
     if (typeof window === "undefined") return mergeMessageTemplates();
     try {
@@ -479,7 +515,7 @@ export const AttendanceDashboard = () => {
       _phone: authPhone || null,
     });
 
-    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes] = await Promise.all([
+    const [profileRes, rolesRes, staffProfilesRes, templatesRes, classesRes, studentsRes, analyticsRes, notificationsRes, importsRes, resultsRes, payrollRes, settingsRes, brandingRes, teachersRes, examResultsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("profiles").select("*").order("full_name"),
@@ -492,6 +528,9 @@ export const AttendanceDashboard = () => {
       supabase.from("result_uploads").select("*").order("created_at", { ascending: false }).limit(12),
       supabase.from("salary_payroll").select("*, profiles(full_name, phone, user_id)").order("payroll_month", { ascending: false }).limit(24),
       supabase.from("payslip_settings").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("app_branding").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle(),
+      supabase.from("teachers").select("*").order("teacher_code", { ascending: true }),
+      supabase.from("exam_results").select("*").order("created_at", { ascending: false }).limit(50),
     ]);
 
     const errors = [profileRes.error, rolesRes.error, staffProfilesRes.error, templatesRes.error, classesRes.error, studentsRes.error, analyticsRes.error, notificationsRes.error, importsRes.error, resultsRes.error, payrollRes.error].filter(Boolean);
@@ -527,6 +566,19 @@ export const AttendanceDashboard = () => {
         show_esi: d.show_esi ?? true,
       });
     }
+    if (brandingRes.data) {
+      const b = brandingRes.data as AppBranding;
+      const next = {
+        id: b.id,
+        organization_name: b.organization_name ?? defaultBranding.organization_name,
+        tagline: b.tagline ?? defaultBranding.tagline,
+        logo_url: b.logo_url ?? "",
+      };
+      setBranding(next);
+      setBrandingDraft(next);
+    }
+    setTeachers((teachersRes.data ?? []) as Teacher[]);
+    setExamResults((examResultsRes.data ?? []) as ExamResult[]);
     setLoading(false);
   };
 
@@ -547,6 +599,14 @@ export const AttendanceDashboard = () => {
     });
 
     void init();
+    // Fetch public branding (works for signed-out visitors too)
+    void supabase.from("app_branding").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle().then(({ data }) => {
+      if (data) {
+        const next = { id: data.id, organization_name: data.organization_name, tagline: data.tagline, logo_url: data.logo_url ?? "" };
+        setBranding(next);
+        setBrandingDraft(next);
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -563,6 +623,8 @@ export const AttendanceDashboard = () => {
       setResults([]);
       setPayroll([]);
       setDailyRecords([]);
+      setTeachers([]);
+      setExamResults([]);
       return;
     }
 
@@ -1495,6 +1557,304 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  // ===== Branding helpers =====
+  const handleBrandingLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingBrandLogo(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/brand-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("branding-assets").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("branding-assets").getPublicUrl(path);
+      setBrandingDraft((prev) => ({ ...prev, logo_url: data.publicUrl }));
+      toast({ title: "Logo uploaded", description: "Save to publish to the front page." });
+    } catch (error) {
+      toast({ title: "Logo upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingBrandLogo(false);
+      event.target.value = "";
+    }
+  };
+
+  const saveBranding = async () => {
+    if (!currentUserId) return;
+    setSavingBranding(true);
+    try {
+      const payload = {
+        organization_name: brandingDraft.organization_name || "Smart Attendance",
+        tagline: brandingDraft.tagline || "",
+        logo_url: brandingDraft.logo_url || null,
+        updated_by: currentUserId,
+      };
+      let res;
+      if (brandingDraft.id) {
+        res = await supabase.from("app_branding").update(payload).eq("id", brandingDraft.id).select().single();
+      } else {
+        res = await supabase.from("app_branding").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const d = res.data as AppBranding;
+      const next = { id: d.id, organization_name: d.organization_name, tagline: d.tagline, logo_url: d.logo_url ?? "" };
+      setBranding(next);
+      setBrandingDraft(next);
+      setBrandingOpen(false);
+      toast({ title: "Front page updated", description: "Your branding is now live." });
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  // ===== Teacher helpers =====
+  const handleTeacherImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingTeacherImg(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/teacher-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("teacher-images").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("teacher-images").getPublicUrl(path);
+      setTeacherDraft((prev) => ({ ...prev, image_url: data.publicUrl }));
+    } catch (error) {
+      toast({ title: "Image upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingTeacherImg(false);
+      event.target.value = "";
+    }
+  };
+
+  const resetTeacherDraft = () => setTeacherDraft({ full_name: "", age: "", position: "", classes_taught: "", image_url: "" });
+
+  const saveTeacher = async () => {
+    if (!teacherDraft.full_name.trim()) {
+      toast({ title: "Name required", description: "Enter the teacher's name.", variant: "destructive" });
+      return;
+    }
+    setSavingTeacher(true);
+    try {
+      const payload = {
+        full_name: teacherDraft.full_name.trim(),
+        age: teacherDraft.age ? Number(teacherDraft.age) : null,
+        position: teacherDraft.position.trim() || null,
+        classes_taught: teacherDraft.classes_taught.trim() || null,
+        image_url: teacherDraft.image_url || null,
+      };
+      let res;
+      if (teacherDraft.id) {
+        res = await supabase.from("teachers").update(payload).eq("id", teacherDraft.id).select().single();
+      } else {
+        res = await supabase.from("teachers").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const updated = res.data as Teacher;
+      setTeachers((prev) => {
+        const filtered = prev.filter((t) => t.id !== updated.id);
+        return [...filtered, updated].sort((a, b) => a.teacher_code.localeCompare(b.teacher_code));
+      });
+      resetTeacherDraft();
+      toast({ title: teacherDraft.id ? "Teacher updated" : "Teacher added", description: `Teacher ID: ${updated.teacher_code}` });
+    } catch (error) {
+      toast({ title: "Could not save teacher", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
+  const editTeacher = (t: Teacher) => {
+    setTeacherDraft({
+      id: t.id,
+      full_name: t.full_name,
+      age: t.age != null ? String(t.age) : "",
+      position: t.position ?? "",
+      classes_taught: t.classes_taught ?? "",
+      image_url: t.image_url ?? "",
+    });
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const deleteTeacher = async (t: Teacher) => {
+    if (!window.confirm(`Delete teacher ${t.full_name} (${t.teacher_code})?`)) return;
+    const { error } = await supabase.from("teachers").delete().eq("id", t.id);
+    if (error) {
+      toast({ title: "Could not delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    setTeachers((prev) => prev.filter((x) => x.id !== t.id));
+    toast({ title: "Teacher removed" });
+  };
+
+  // ===== Exam result helpers =====
+  const resetResultDraft = () => {
+    setEditingResultId(null);
+    setResultStudentId("");
+    setResultExamName("Terminal Exam");
+    setResultExamDate(todayDate());
+    setResultSubjects([{ name: "", max: 100, obtained: 0 }]);
+    setResultGrade("Pass");
+    setResultFeedback("");
+  };
+
+  const saveExamResult = async () => {
+    if (!resultStudentId) {
+      toast({ title: "Pick a student", variant: "destructive" });
+      return;
+    }
+    const cleanSubjects = resultSubjects.filter((s) => s.name.trim());
+    if (!cleanSubjects.length) {
+      toast({ title: "Add at least one subject", variant: "destructive" });
+      return;
+    }
+    const totalMax = cleanSubjects.reduce((sum, s) => sum + Number(s.max || 0), 0);
+    const totalObt = cleanSubjects.reduce((sum, s) => sum + Number(s.obtained || 0), 0);
+    const student = students.find((x) => x.id === resultStudentId);
+    if (!student) return;
+    setSavingResult(true);
+    try {
+      const payload = {
+        student_id: resultStudentId,
+        class_id: student.class_id,
+        exam_name: resultExamName,
+        exam_date: resultExamDate,
+        subjects: cleanSubjects as unknown as Json,
+        total_max: totalMax,
+        total_obtained: totalObt,
+        overall_grade: resultGrade,
+        feedback: resultFeedback || null,
+        created_by: currentUserId,
+      };
+      let res;
+      if (editingResultId) {
+        res = await supabase.from("exam_results").update(payload).eq("id", editingResultId).select().single();
+      } else {
+        res = await supabase.from("exam_results").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const updated = res.data as ExamResult;
+      setExamResults((prev) => {
+        const filtered = prev.filter((r) => r.id !== updated.id);
+        return [updated, ...filtered];
+      });
+      resetResultDraft();
+      toast({ title: "Result saved" });
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingResult(false);
+    }
+  };
+
+  const editExamResult = (r: ExamResult) => {
+    setEditingResultId(r.id);
+    setResultStudentId(r.student_id);
+    setResultExamName(r.exam_name);
+    setResultExamDate(r.exam_date ?? todayDate());
+    const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
+    setResultSubjects(subs.length ? subs : [{ name: "", max: 100, obtained: 0 }]);
+    setResultGrade(((r.overall_grade as "Pass" | "Fail" | "Compartment") || "Pass"));
+    setResultFeedback(r.feedback ?? "");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const deleteExamResult = async (r: ExamResult) => {
+    if (!window.confirm("Delete this result?")) return;
+    const { error } = await supabase.from("exam_results").delete().eq("id", r.id);
+    if (error) {
+      toast({ title: "Could not delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    setExamResults((prev) => prev.filter((x) => x.id !== r.id));
+  };
+
+  const buildMarksheetDoc = (r: ExamResult) => {
+    const student = students.find((s) => s.id === r.student_id);
+    const studentName = student?.full_name || "Student";
+    const rollNo = student?.roll_number || "";
+    const cls = classes.find((c) => c.id === r.class_id);
+    const classLabelText = cls ? `Class ${cls.class_name}${cls.section ? `-${cls.section}` : ""}` : "";
+    const doc = new jsPDF();
+    let y = 16;
+    if (branding.logo_url) {
+      try { doc.addImage(branding.logo_url, "PNG", 15, y, 22, 22); } catch { /* ignore */ }
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(branding.organization_name || "School", branding.logo_url ? 42 : 15, y + 8);
+    if (branding.tagline) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      doc.text(branding.tagline, branding.logo_url ? 42 : 15, y + 16, { maxWidth: 150 });
+    }
+    y += 30;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("Examination Marksheet", 105, y, { align: "center" });
+    y += 6;
+
+    autoTable(doc, {
+      startY: y + 2,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: [
+        ["Student", studentName],
+        ["Roll No", rollNo],
+        ["Class", classLabelText],
+        ["Exam", r.exam_name],
+        ["Date", r.exam_date ? format(new Date(r.exam_date), "dd MMM yyyy") : "-"],
+      ],
+    });
+
+    const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 6,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2.5 },
+      head: [["Subject", "Total Marks", "Marks Obtained", "%"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: subs.map((s) => [s.name, String(s.max), String(s.obtained), `${s.max ? Math.round((Number(s.obtained) / Number(s.max)) * 100) : 0}%`]),
+      foot: [["Grand Total", String(r.total_max), String(r.total_obtained), `${r.total_max ? Math.round((Number(r.total_obtained) / Number(r.total_max)) * 100) : 0}%`]],
+      footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
+    });
+
+    let endY = (doc as any).lastAutoTable.finalY + 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`Result: ${r.overall_grade ?? "-"}`, 15, endY);
+    endY += 8;
+    if (r.feedback) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Teacher's Feedback:", 15, endY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const lines = doc.splitTextToSize(r.feedback, 180);
+      doc.text(lines, 15, endY + 6);
+    }
+    const fileName = `marksheet-${studentName.replace(/\s+/g, "-").toLowerCase()}-${r.exam_name.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+    return { doc, fileName, student };
+  };
+
+  const downloadMarksheet = (r: ExamResult) => {
+    const { doc, fileName } = buildMarksheetDoc(r);
+    doc.save(fileName);
+  };
+
+  const shareMarksheetWhatsApp = (r: ExamResult) => {
+    const { doc, fileName, student } = buildMarksheetDoc(r);
+    doc.save(fileName);
+    if (!student) return;
+    const phoneRaw = (student.whatsapp_phone || student.parent_phone || "").replace(/\D/g, "");
+    const phone = phoneRaw.length === 10 ? `91${phoneRaw}` : phoneRaw;
+    const msg = `Marksheet for ${student.full_name} (${r.exam_name}) — Result: ${r.overall_grade}. ${branding.organization_name}`;
+    openWhatsApp(phone, msg);
+    toast({ title: "Marksheet downloaded", description: "Attach the PDF inside WhatsApp before sending." });
+  };
+
 
   if (sessionLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
@@ -1508,9 +1868,14 @@ export const AttendanceDashboard = () => {
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
-              <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ Smart Attendance</Badge>
+              <div className="flex items-center gap-3">
+                {branding.logo_url && (
+                  <img src={branding.logo_url} alt={`${branding.organization_name} logo`} className="h-12 w-12 rounded-xl border border-border/70 bg-background/70 object-contain p-1" />
+                )}
+                <Badge className="rounded-full border-border/70 bg-background/70 px-4 py-1.5 text-foreground">✨ {branding.organization_name}</Badge>
+              </div>
               <div className="space-y-4">
-                <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">A delightful command center for teachers, admins, and parents.</h1>
+                <h1 className="font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">{branding.tagline}</h1>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
@@ -1608,6 +1973,15 @@ export const AttendanceDashboard = () => {
             <CardHeader className="space-y-6 pb-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    {branding.logo_url && (
+                      <img src={branding.logo_url} alt={branding.organization_name} className="h-12 w-12 rounded-xl border border-border/70 bg-background/70 object-contain p-1" />
+                    )}
+                    <div>
+                      <h2 className="font-display text-2xl leading-tight">{branding.organization_name}</h2>
+                      {branding.tagline && <p className="text-xs text-muted-foreground">{branding.tagline}</p>}
+                    </div>
+                  </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                     <GraduationCap className="h-3.5 w-3.5" />
                     Attendance Command Center
@@ -1627,6 +2001,12 @@ export const AttendanceDashboard = () => {
                         <TabsTrigger value="admin" className="rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"><ShieldCheck className="mr-1.5 h-4 w-4" />Admin</TabsTrigger>
                       </TabsList>
                     </Tabs>
+                  )}
+                  {isAdmin && (
+                    <Button variant="outline" size="sm" onClick={() => { setBrandingDraft(branding); setBrandingOpen(true); }} className="sm:size-default">
+                      <Settings className="h-4 w-4" />
+                      Branding
+                    </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => void handleLogout()} className="sm:size-default">
                     <LogOut className="h-4 w-4" />
@@ -1697,6 +2077,8 @@ export const AttendanceDashboard = () => {
                 <TabsTrigger value="attendance" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Attendance</TabsTrigger>
                 <TabsTrigger value="imports" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Excel & Sheets</TabsTrigger>
                 <TabsTrigger value="results" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Results</TabsTrigger>
+                <TabsTrigger value="marksheet" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Marksheets</TabsTrigger>
+                <TabsTrigger value="teachers" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Teachers</TabsTrigger>
                 {isAdmin && <TabsTrigger value="salary" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Salary</TabsTrigger>}
                 <TabsTrigger value="analytics" className="shrink-0 rounded-xl px-3 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm">Analytics</TabsTrigger>
               </TabsList>
@@ -2060,6 +2442,191 @@ export const AttendanceDashboard = () => {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="marksheet" className="grid gap-6 xl:grid-cols-[1fr,1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">{editingResultId ? "Edit marksheet" : "Add marksheet"}</CardTitle>
+                    <CardDescription>Enter subject-wise marks, grade, and feedback. Branding (logo, organization name, tagline) is taken from the front-page settings.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Student</Label>
+                        <Select value={resultStudentId} onValueChange={setResultStudentId}>
+                          <SelectTrigger className="bg-background/80"><SelectValue placeholder="Select student" /></SelectTrigger>
+                          <SelectContent>
+                            {filteredStudents.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.full_name} (Roll {s.roll_number})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Exam name</Label>
+                        <Input value={resultExamName} onChange={(e) => setResultExamName(e.target.value)} className="bg-background/80" />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Exam date</Label>
+                        <Input type="date" value={resultExamDate} onChange={(e) => setResultExamDate(e.target.value)} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Overall result</Label>
+                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as any)}>
+                          <SelectTrigger className="bg-background/80"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Pass">Pass</SelectItem>
+                            <SelectItem value="Fail">Fail</SelectItem>
+                            <SelectItem value="Compartment">Compartment</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 p-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Subjects</Label>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setResultSubjects((p) => [...p, { name: "", max: 100, obtained: 0 }])}>+ Add subject</Button>
+                      </div>
+                      <div className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                        <span>Subject</span><span>Total</span><span>Obtained</span><span></span>
+                      </div>
+                      {resultSubjects.map((s, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2">
+                          <Input value={s.name} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="e.g. Math" className="bg-background/80" />
+                          <Input type="number" min="0" value={s.max} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, max: Number(e.target.value) } : x))} className="bg-background/80" />
+                          <Input type="number" min="0" value={s.obtained} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, obtained: Number(e.target.value) } : x))} className="bg-background/80" />
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setResultSubjects((p) => p.filter((_, i) => i !== idx))}>×</Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Teacher's feedback</Label>
+                      <Textarea rows={3} value={resultFeedback} onChange={(e) => setResultFeedback(e.target.value)} placeholder="Strengths, areas to improve, encouragement..." className="bg-background/80" />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button onClick={saveExamResult} disabled={savingResult} className="flex-1">{savingResult ? "Saving..." : editingResultId ? "Update marksheet" : "Save marksheet"}</Button>
+                      {editingResultId && <Button variant="outline" onClick={resetResultDraft}>Cancel</Button>}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Saved marksheets</CardTitle>
+                    <CardDescription>Download a branded PDF or share via WhatsApp.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {examResults.length ? examResults.map((r) => {
+                      const stud = students.find((s) => s.id === r.student_id);
+                      return (
+                        <div key={r.id} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold">{stud?.full_name || "Student"} <span className="text-xs text-muted-foreground">· Roll {stud?.roll_number}</span></p>
+                              <p className="text-sm text-muted-foreground">{r.exam_name} · {r.exam_date ? format(new Date(r.exam_date), "dd MMM yyyy") : ""}</p>
+                            </div>
+                            <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", r.overall_grade === "Pass" ? toneStyles.success : r.overall_grade === "Fail" ? toneStyles.danger : toneStyles.warning)}>{r.overall_grade}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground">{r.total_obtained} / {r.total_max} ({r.total_max ? Math.round((Number(r.total_obtained) / Number(r.total_max)) * 100) : 0}%)</p>
+                          {r.feedback && <p className="mt-1 text-sm italic text-muted-foreground">"{r.feedback}"</p>}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadMarksheet(r)}><Download className="h-4 w-4" />PDF</Button>
+                            <Button variant="outline" size="sm" onClick={() => shareMarksheetWhatsApp(r)}><MessageCircle className="h-4 w-4" />WhatsApp</Button>
+                            <Button variant="outline" size="sm" onClick={() => editExamResult(r)}><UserCog className="h-4 w-4" />Edit</Button>
+                            {isAdmin && <Button variant="outline" size="sm" onClick={() => deleteExamResult(r)}>Delete</Button>}
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No marksheets yet. Save one on the left.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="teachers" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">{teacherDraft.id ? "Edit teacher" : "Add teacher"}</CardTitle>
+                    <CardDescription>{isAdmin ? "Teacher ID is generated automatically when you save." : "Only Admin can add or edit teachers."}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Full name</Label>
+                      <Input value={teacherDraft.full_name} onChange={(e) => setTeacherDraft({ ...teacherDraft, full_name: e.target.value })} disabled={!isAdmin} className="bg-background/80" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>Age</Label>
+                        <Input type="number" value={teacherDraft.age} onChange={(e) => setTeacherDraft({ ...teacherDraft, age: e.target.value })} disabled={!isAdmin} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Position</Label>
+                        <Input value={teacherDraft.position} onChange={(e) => setTeacherDraft({ ...teacherDraft, position: e.target.value })} placeholder="e.g. Senior Math Teacher" disabled={!isAdmin} className="bg-background/80" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Classes taught</Label>
+                      <Input value={teacherDraft.classes_taught} onChange={(e) => setTeacherDraft({ ...teacherDraft, classes_taught: e.target.value })} placeholder="e.g. 8, 9, 10" disabled={!isAdmin} className="bg-background/80" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Photo</Label>
+                      <Input type="file" accept="image/*" onChange={handleTeacherImageUpload} disabled={!isAdmin || uploadingTeacherImg} />
+                      {teacherDraft.image_url && (
+                        <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                          <img src={teacherDraft.image_url} alt="Teacher" className="h-16 w-16 rounded-full object-cover" />
+                          {isAdmin && <Button type="button" variant="ghost" size="sm" onClick={() => setTeacherDraft({ ...teacherDraft, image_url: "" })}>Remove</Button>}
+                        </div>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-2">
+                        <Button onClick={saveTeacher} disabled={savingTeacher} className="flex-1">{savingTeacher ? "Saving..." : teacherDraft.id ? "Update teacher" : "Generate ID & save"}</Button>
+                        {teacherDraft.id && <Button variant="outline" onClick={resetTeacherDraft}>Cancel</Button>}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Teachers directory</CardTitle>
+                    <CardDescription>{teachers.length} teacher{teachers.length === 1 ? "" : "s"} on record.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {teachers.length ? teachers.map((t) => (
+                      <div key={t.id} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                        {t.image_url ? (
+                          <img src={t.image_url} alt={t.full_name} className="h-14 w-14 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent/70 text-accent-foreground"><UserSquare2 className="h-6 w-6" /></div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-base font-semibold">{t.full_name}</p>
+                            <Badge variant="secondary">{t.teacher_code}</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{t.position || "Teacher"}{t.age ? ` · Age ${t.age}` : ""}</p>
+                          {t.classes_taught && <p className="text-sm text-muted-foreground">Classes: {t.classes_taught}</p>}
+                          {isAdmin && (
+                            <div className="mt-2 flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => editTeacher(t)}><UserCog className="h-4 w-4" />Edit</Button>
+                              <Button size="sm" variant="outline" onClick={() => deleteTeacher(t)}>Delete</Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No teachers added yet.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               {isAdmin && <TabsContent value="salary" className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader className="flex-row items-start justify-between gap-3">
@@ -2356,6 +2923,38 @@ export const AttendanceDashboard = () => {
             </Card>
           </div>
         </section>
+
+        <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Front-page branding</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Organization name</Label>
+                <Input value={brandingDraft.organization_name} onChange={(e) => setBrandingDraft({ ...brandingDraft, organization_name: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tagline</Label>
+                <Textarea rows={2} value={brandingDraft.tagline} onChange={(e) => setBrandingDraft({ ...brandingDraft, tagline: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Logo image</Label>
+                <Input type="file" accept="image/*" onChange={handleBrandingLogoUpload} disabled={uploadingBrandLogo} />
+                {brandingDraft.logo_url && (
+                  <div className="flex items-center gap-3 rounded-lg border border-border/60 p-2">
+                    <img src={brandingDraft.logo_url} alt="Logo preview" className="h-12 w-12 rounded object-contain" />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setBrandingDraft({ ...brandingDraft, logo_url: "" })}>Remove</Button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBrandingOpen(false)}>Cancel</Button>
+              <Button onClick={saveBranding} disabled={savingBranding}>{savingBranding ? "Saving..." : "Save & publish"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
