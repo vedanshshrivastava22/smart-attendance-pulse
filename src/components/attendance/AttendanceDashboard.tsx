@@ -1547,6 +1547,304 @@ export const AttendanceDashboard = () => {
     }
   };
 
+  // ===== Branding helpers =====
+  const handleBrandingLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingBrandLogo(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/brand-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("branding-assets").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("branding-assets").getPublicUrl(path);
+      setBrandingDraft((prev) => ({ ...prev, logo_url: data.publicUrl }));
+      toast({ title: "Logo uploaded", description: "Save to publish to the front page." });
+    } catch (error) {
+      toast({ title: "Logo upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingBrandLogo(false);
+      event.target.value = "";
+    }
+  };
+
+  const saveBranding = async () => {
+    if (!currentUserId) return;
+    setSavingBranding(true);
+    try {
+      const payload = {
+        organization_name: brandingDraft.organization_name || "Smart Attendance",
+        tagline: brandingDraft.tagline || "",
+        logo_url: brandingDraft.logo_url || null,
+        updated_by: currentUserId,
+      };
+      let res;
+      if (brandingDraft.id) {
+        res = await supabase.from("app_branding").update(payload).eq("id", brandingDraft.id).select().single();
+      } else {
+        res = await supabase.from("app_branding").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const d = res.data as AppBranding;
+      const next = { id: d.id, organization_name: d.organization_name, tagline: d.tagline, logo_url: d.logo_url ?? "" };
+      setBranding(next);
+      setBrandingDraft(next);
+      setBrandingOpen(false);
+      toast({ title: "Front page updated", description: "Your branding is now live." });
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  // ===== Teacher helpers =====
+  const handleTeacherImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploadingTeacherImg(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${currentUserId}/teacher-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("teacher-images").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("teacher-images").getPublicUrl(path);
+      setTeacherDraft((prev) => ({ ...prev, image_url: data.publicUrl }));
+    } catch (error) {
+      toast({ title: "Image upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
+    } finally {
+      setUploadingTeacherImg(false);
+      event.target.value = "";
+    }
+  };
+
+  const resetTeacherDraft = () => setTeacherDraft({ full_name: "", age: "", position: "", classes_taught: "", image_url: "" });
+
+  const saveTeacher = async () => {
+    if (!teacherDraft.full_name.trim()) {
+      toast({ title: "Name required", description: "Enter the teacher's name.", variant: "destructive" });
+      return;
+    }
+    setSavingTeacher(true);
+    try {
+      const payload = {
+        full_name: teacherDraft.full_name.trim(),
+        age: teacherDraft.age ? Number(teacherDraft.age) : null,
+        position: teacherDraft.position.trim() || null,
+        classes_taught: teacherDraft.classes_taught.trim() || null,
+        image_url: teacherDraft.image_url || null,
+      };
+      let res;
+      if (teacherDraft.id) {
+        res = await supabase.from("teachers").update(payload).eq("id", teacherDraft.id).select().single();
+      } else {
+        res = await supabase.from("teachers").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const updated = res.data as Teacher;
+      setTeachers((prev) => {
+        const filtered = prev.filter((t) => t.id !== updated.id);
+        return [...filtered, updated].sort((a, b) => a.teacher_code.localeCompare(b.teacher_code));
+      });
+      resetTeacherDraft();
+      toast({ title: teacherDraft.id ? "Teacher updated" : "Teacher added", description: `Teacher ID: ${updated.teacher_code}` });
+    } catch (error) {
+      toast({ title: "Could not save teacher", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
+  const editTeacher = (t: Teacher) => {
+    setTeacherDraft({
+      id: t.id,
+      full_name: t.full_name,
+      age: t.age != null ? String(t.age) : "",
+      position: t.position ?? "",
+      classes_taught: t.classes_taught ?? "",
+      image_url: t.image_url ?? "",
+    });
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const deleteTeacher = async (t: Teacher) => {
+    if (!window.confirm(`Delete teacher ${t.full_name} (${t.teacher_code})?`)) return;
+    const { error } = await supabase.from("teachers").delete().eq("id", t.id);
+    if (error) {
+      toast({ title: "Could not delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    setTeachers((prev) => prev.filter((x) => x.id !== t.id));
+    toast({ title: "Teacher removed" });
+  };
+
+  // ===== Exam result helpers =====
+  const resetResultDraft = () => {
+    setEditingResultId(null);
+    setResultStudentId("");
+    setResultExamName("Terminal Exam");
+    setResultExamDate(todayDate());
+    setResultSubjects([{ name: "", max: 100, obtained: 0 }]);
+    setResultGrade("Pass");
+    setResultFeedback("");
+  };
+
+  const saveExamResult = async () => {
+    if (!resultStudentId) {
+      toast({ title: "Pick a student", variant: "destructive" });
+      return;
+    }
+    const cleanSubjects = resultSubjects.filter((s) => s.name.trim());
+    if (!cleanSubjects.length) {
+      toast({ title: "Add at least one subject", variant: "destructive" });
+      return;
+    }
+    const totalMax = cleanSubjects.reduce((sum, s) => sum + Number(s.max || 0), 0);
+    const totalObt = cleanSubjects.reduce((sum, s) => sum + Number(s.obtained || 0), 0);
+    const student = students.find((x) => x.id === resultStudentId);
+    if (!student) return;
+    setSavingResult(true);
+    try {
+      const payload = {
+        student_id: resultStudentId,
+        class_id: student.class_id,
+        exam_name: resultExamName,
+        exam_date: resultExamDate,
+        subjects: cleanSubjects as unknown as Json,
+        total_max: totalMax,
+        total_obtained: totalObt,
+        overall_grade: resultGrade,
+        feedback: resultFeedback || null,
+        created_by: currentUserId,
+      };
+      let res;
+      if (editingResultId) {
+        res = await supabase.from("exam_results").update(payload).eq("id", editingResultId).select().single();
+      } else {
+        res = await supabase.from("exam_results").insert(payload).select().single();
+      }
+      if (res.error) throw res.error;
+      const updated = res.data as ExamResult;
+      setExamResults((prev) => {
+        const filtered = prev.filter((r) => r.id !== updated.id);
+        return [updated, ...filtered];
+      });
+      resetResultDraft();
+      toast({ title: "Result saved" });
+    } catch (error) {
+      toast({ title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingResult(false);
+    }
+  };
+
+  const editExamResult = (r: ExamResult) => {
+    setEditingResultId(r.id);
+    setResultStudentId(r.student_id);
+    setResultExamName(r.exam_name);
+    setResultExamDate(r.exam_date ?? todayDate());
+    const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
+    setResultSubjects(subs.length ? subs : [{ name: "", max: 100, obtained: 0 }]);
+    setResultGrade(((r.overall_grade as "Pass" | "Fail" | "Compartment") || "Pass"));
+    setResultFeedback(r.feedback ?? "");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const deleteExamResult = async (r: ExamResult) => {
+    if (!window.confirm("Delete this result?")) return;
+    const { error } = await supabase.from("exam_results").delete().eq("id", r.id);
+    if (error) {
+      toast({ title: "Could not delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    setExamResults((prev) => prev.filter((x) => x.id !== r.id));
+  };
+
+  const buildMarksheetDoc = (r: ExamResult) => {
+    const student = students.find((s) => s.id === r.student_id);
+    const studentName = student?.full_name || "Student";
+    const rollNo = student?.roll_number || "";
+    const cls = classes.find((c) => c.id === r.class_id);
+    const classLabelText = cls ? `Class ${cls.class_name}${cls.section ? `-${cls.section}` : ""}` : "";
+    const doc = new jsPDF();
+    let y = 16;
+    if (branding.logo_url) {
+      try { doc.addImage(branding.logo_url, "PNG", 15, y, 22, 22); } catch { /* ignore */ }
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(branding.organization_name || "School", branding.logo_url ? 42 : 15, y + 8);
+    if (branding.tagline) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      doc.text(branding.tagline, branding.logo_url ? 42 : 15, y + 16, { maxWidth: 150 });
+    }
+    y += 30;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("Examination Marksheet", 105, y, { align: "center" });
+    y += 6;
+
+    autoTable(doc, {
+      startY: y + 2,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: [
+        ["Student", studentName],
+        ["Roll No", rollNo],
+        ["Class", classLabelText],
+        ["Exam", r.exam_name],
+        ["Date", r.exam_date ? format(new Date(r.exam_date), "dd MMM yyyy") : "-"],
+      ],
+    });
+
+    const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 6,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 2.5 },
+      head: [["Subject", "Total Marks", "Marks Obtained", "%"]],
+      headStyles: { fillColor: [40, 60, 110], textColor: 255 },
+      body: subs.map((s) => [s.name, String(s.max), String(s.obtained), `${s.max ? Math.round((Number(s.obtained) / Number(s.max)) * 100) : 0}%`]),
+      foot: [["Grand Total", String(r.total_max), String(r.total_obtained), `${r.total_max ? Math.round((Number(r.total_obtained) / Number(r.total_max)) * 100) : 0}%`]],
+      footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
+    });
+
+    let endY = (doc as any).lastAutoTable.finalY + 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`Result: ${r.overall_grade ?? "-"}`, 15, endY);
+    endY += 8;
+    if (r.feedback) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Teacher's Feedback:", 15, endY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const lines = doc.splitTextToSize(r.feedback, 180);
+      doc.text(lines, 15, endY + 6);
+    }
+    const fileName = `marksheet-${studentName.replace(/\s+/g, "-").toLowerCase()}-${r.exam_name.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+    return { doc, fileName, student };
+  };
+
+  const downloadMarksheet = (r: ExamResult) => {
+    const { doc, fileName } = buildMarksheetDoc(r);
+    doc.save(fileName);
+  };
+
+  const shareMarksheetWhatsApp = (r: ExamResult) => {
+    const { doc, fileName, student } = buildMarksheetDoc(r);
+    doc.save(fileName);
+    if (!student) return;
+    const phoneRaw = (student.whatsapp_phone || student.parent_phone || "").replace(/\D/g, "");
+    const phone = phoneRaw.length === 10 ? `91${phoneRaw}` : phoneRaw;
+    const msg = `Marksheet for ${student.full_name} (${r.exam_name}) — Result: ${r.overall_grade}. ${branding.organization_name}`;
+    openWhatsApp(phone, msg);
+    toast({ title: "Marksheet downloaded", description: "Attach the PDF inside WhatsApp before sending." });
+  };
+
 
   if (sessionLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Loading attendance control center…</div>;
