@@ -623,6 +623,8 @@ export const AttendanceDashboard = () => {
       setResults([]);
       setPayroll([]);
       setDailyRecords([]);
+      setTeachers([]);
+      setExamResults([]);
       return;
     }
 
