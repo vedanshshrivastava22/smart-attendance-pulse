@@ -472,6 +472,11 @@ export const AttendanceDashboard = () => {
   const getStudentAttendanceStatus = (student: StudentWithAnalytics) =>
     attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present";
 
+  const markedStudents = useMemo(
+    () => filteredStudents.filter((student) => Boolean(attendanceDrafts[student.id] || dailyRecordByStudentId.has(student.id))),
+    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+  );
+
   const bulkStatusCounts = useMemo(
     () =>
       attendanceStatuses.reduce(
