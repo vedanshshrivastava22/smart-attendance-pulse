@@ -996,6 +996,67 @@ export const AttendanceDashboard = () => {
     openSms(phone, buildStudentAttendanceMessage(student));
   };
 
+  const resetStudentDraft = () => setStudentDraft({ id: "", full_name: "", roll_number: "", parent_name: "", parent_phone: "", whatsapp_phone: "" });
+
+  const editStudentRecord = (student: StudentWithAnalytics) => {
+    setStudentDraft({
+      id: student.id,
+      full_name: student.full_name,
+      roll_number: student.roll_number,
+      parent_name: student.parent_name ?? "",
+      parent_phone: student.parent_phone,
+      whatsapp_phone: student.whatsapp_phone ?? "",
+    });
+  };
+
+  const saveManualStudent = async () => {
+    if (!selectedClassId || !studentDraft.full_name.trim() || !studentDraft.roll_number.trim() || !studentDraft.parent_phone.trim()) {
+      toast({ title: "Student details required", description: "Enter name, roll number, and parent contact number.", variant: "destructive" });
+      return;
+    }
+    setSavingStudentRecord(true);
+    try {
+      const payload = {
+        class_id: selectedClassId,
+        full_name: studentDraft.full_name.trim(),
+        roll_number: studentDraft.roll_number.trim(),
+        parent_name: studentDraft.parent_name.trim() || null,
+        parent_phone: normalizePhone(studentDraft.parent_phone),
+        whatsapp_phone: normalizePhone(studentDraft.whatsapp_phone || studentDraft.parent_phone),
+        preferred_language: messageLanguage,
+        is_active: true,
+      };
+      const res = studentDraft.id
+        ? await supabase.from("students").update(payload).eq("id", studentDraft.id).select().single()
+        : await supabase.from("students").insert(payload).select().single();
+      if (res.error) throw res.error;
+      resetStudentDraft();
+      toast({ title: studentDraft.id ? "Student updated" : "Student added", description: `Saved permanently in ${classLabel}.` });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Student not saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingStudentRecord(false);
+    }
+  };
+
+  const deleteStudentRecord = async (student: StudentWithAnalytics) => {
+    if (!window.confirm(`Remove ${student.full_name} from ${classLabel}?`)) return;
+    const { error } = await supabase.from("students").delete().eq("id", student.id);
+    if (error) {
+      toast({ title: "Could not remove student", description: error.message, variant: "destructive" });
+      return;
+    }
+    setStudents((prev) => prev.filter((item) => item.id !== student.id));
+    setAttendanceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[student.id];
+      return next;
+    });
+    if (studentDraft.id === student.id) resetStudentDraft();
+    toast({ title: "Student removed", description: `${student.full_name} was removed from ${classLabel}.` });
+  };
+
   const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
     if (!selectedClassId) return;
     const path = `${selectedClassId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
