@@ -425,6 +425,8 @@ export const AttendanceDashboard = () => {
   );
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [studentDraft, setStudentDraft] = useState({ id: "", full_name: "", roll_number: "", parent_name: "", parent_phone: "", whatsapp_phone: "" });
+  const [savingStudentRecord, setSavingStudentRecord] = useState(false);
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
   const [lastImportSheetName, setLastImportSheetName] = useState("");
