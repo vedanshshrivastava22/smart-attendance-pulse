@@ -2669,7 +2669,7 @@ export const AttendanceDashboard = () => {
                       </div>
                       <div className="space-y-1.5">
                         <Label>Overall result</Label>
-                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as any)}>
+                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as "Pass" | "Fail" | "Compartment")}>
                           <SelectTrigger className="bg-background/80"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Pass">Pass</SelectItem>
