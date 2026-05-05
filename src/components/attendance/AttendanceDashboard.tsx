@@ -841,16 +841,16 @@ export const AttendanceDashboard = () => {
       toast({ title: `${attendanceLabels[status]} marked`, description: `${student.full_name} updated successfully.` });
     }
 
-    await refreshAll();
+    await fetchDailyRecords(selectedClassId, selectedDate);
     setSavingStudentId(null);
   };
 
   const saveAllAttendance = async () => {
-    if (!selectedClassId || !filteredStudents.length) return;
+    if (!selectedClassId || !markedStudents.length) return;
     setSavingStudentId("__bulk__");
     let success = 0;
     let failed = 0;
-    for (const student of filteredStudents) {
+    for (const student of markedStudents) {
       const status = attendanceDrafts[student.id] ?? "present";
       const message = buildAttendanceMessage({
         studentName: student.full_name,
@@ -902,7 +902,7 @@ export const AttendanceDashboard = () => {
       description: `${success} marked, ${failed} failed for ${classLabel}.`,
       variant: failed ? "destructive" : "default",
     });
-    await refreshAll();
+    await fetchDailyRecords(selectedClassId, selectedDate);
   };
 
   const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
