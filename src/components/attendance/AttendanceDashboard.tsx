@@ -89,6 +89,7 @@ type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
 type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 
 type ResultSubject = { name: string; max: number; obtained: number };
+type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
 
 const defaultBranding = {
   id: "" as string,
@@ -482,7 +483,7 @@ export const AttendanceDashboard = () => {
       attendanceStatuses.reduce(
         (counts, status) => ({
           ...counts,
-          [status]: markedStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
+          [status]: markedStudents.filter((student) => (attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present") === status).length,
         }),
         { present: 0, absent: 0, leave: 0, holiday: 0 } as Record<AttendanceStatus, number>,
       ),
