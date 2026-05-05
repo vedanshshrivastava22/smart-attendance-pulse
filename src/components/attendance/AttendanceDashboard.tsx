@@ -2456,6 +2456,76 @@ export const AttendanceDashboard = () => {
                   </CardContent>
                 </Card>
 
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Manual student entry</CardTitle>
+                    <CardDescription>Add, edit, or remove students for the selected class without Excel.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-6 lg:grid-cols-[0.85fr,1.15fr]">
+                    <div className="space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Class</Label>
+                          <Input value={classLabel} disabled className="bg-muted/60" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Roll number</Label>
+                          <Input value={studentDraft.roll_number} onChange={(e) => setStudentDraft({ ...studentDraft, roll_number: e.target.value })} className="bg-background/80" />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Student name</Label>
+                        <Input value={studentDraft.full_name} onChange={(e) => setStudentDraft({ ...studentDraft, full_name: e.target.value })} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Parent name</Label>
+                        <Input value={studentDraft.parent_name} onChange={(e) => setStudentDraft({ ...studentDraft, parent_name: e.target.value })} className="bg-background/80" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Parent contact number</Label>
+                          <Input type="tel" value={studentDraft.parent_phone} onChange={(e) => setStudentDraft({ ...studentDraft, parent_phone: e.target.value })} className="bg-background/80" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>WhatsApp number</Label>
+                          <Input type="tel" value={studentDraft.whatsapp_phone} onChange={(e) => setStudentDraft({ ...studentDraft, whatsapp_phone: e.target.value })} placeholder="Same as parent contact" className="bg-background/80" />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => void saveManualStudent()} disabled={savingStudentRecord || !selectedClassId} className="flex-1">
+                          {savingStudentRecord ? "Saving..." : studentDraft.id ? "Update student" : "Add student"}
+                        </Button>
+                        {studentDraft.id && <Button variant="outline" onClick={resetStudentDraft}>Cancel</Button>}
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">Saved students in {classLabel}</p>
+                        <Badge variant="secondary">{filteredStudents.length}</Badge>
+                      </div>
+                      <div className="max-h-[480px] space-y-2 overflow-auto pr-1">
+                        {filteredStudents.length ? filteredStudents.map((student) => (
+                          <div key={`manage-${student.id}`} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-medium text-foreground">{student.full_name}</p>
+                                <p className="text-sm text-muted-foreground">Roll {student.roll_number} · {student.parent_name || "Parent name pending"}</p>
+                                <p className="text-xs text-muted-foreground">{student.whatsapp_phone || student.parent_phone}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => editStudentRecord(student)}><UserCog className="h-4 w-4" />Edit</Button>
+                                <Button size="sm" variant="outline" onClick={() => void deleteStudentRecord(student)}>Remove</Button>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No manual or Excel students saved for this class yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)]">
                   <CardHeader>
                     <CardTitle className="font-display text-2xl">Attendance Excel</CardTitle>
