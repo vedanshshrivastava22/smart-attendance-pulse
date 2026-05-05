@@ -1910,7 +1910,7 @@ export const AttendanceDashboard = () => {
 
     const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 6,
+      startY: ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 6,
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 2.5 },
       head: [["Subject", "Total Marks", "Marks Obtained", "%"]],
@@ -1920,7 +1920,7 @@ export const AttendanceDashboard = () => {
       footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
     });
 
-    let endY = (doc as any).lastAutoTable.finalY + 8;
+    let endY = ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text(`Result: ${r.overall_grade ?? "-"}`, 15, endY);
