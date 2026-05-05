@@ -658,7 +658,8 @@ export const AttendanceDashboard = () => {
     students
       .filter((student) => student.class_id === selectedClassId)
       .forEach((student) => {
-        nextDrafts[student.id] = dailyRecordByStudentId.get(student.id)?.status ?? "present";
+        const savedStatus = dailyRecordByStudentId.get(student.id)?.status;
+        if (savedStatus) nextDrafts[student.id] = savedStatus;
       });
     setAttendanceDrafts((current) => ({ ...current, ...nextDrafts }));
   }, [dailyRecordByStudentId, selectedClassId, students]);
