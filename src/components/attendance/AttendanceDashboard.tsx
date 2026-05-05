@@ -482,11 +482,11 @@ export const AttendanceDashboard = () => {
       attendanceStatuses.reduce(
         (counts, status) => ({
           ...counts,
-          [status]: filteredStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
+          [status]: markedStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
         }),
         { present: 0, absent: 0, leave: 0, holiday: 0 } as Record<AttendanceStatus, number>,
       ),
-    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+    [attendanceDrafts, dailyRecordByStudentId, markedStudents],
   );
 
   const payrollOverview = useMemo(() => {
