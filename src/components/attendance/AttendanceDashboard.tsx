@@ -905,9 +905,28 @@ export const AttendanceDashboard = () => {
     await fetchDailyRecords(selectedClassId, selectedDate);
   };
 
+  const getParentMessageTarget = (student: StudentWithAnalytics) => {
+    const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
+    if (!raw) return "";
+    return raw.length === 10 ? `91${raw}` : raw;
+  };
+
+  const buildStudentAttendanceMessage = (student: StudentWithAnalytics) => {
+    const status = getStudentAttendanceStatus(student);
+    return buildAttendanceMessage({
+      studentName: student.full_name,
+      parentName: student.parent_name,
+      classLabel,
+      date: format(new Date(selectedDate), "dd MMM yyyy"),
+      status,
+      language: messageLanguage,
+      template: messageTemplates[messageLanguage][status],
+    });
+  };
+
   const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
-    if (!filteredStudents.length) return;
-    const targets = filteredStudents.filter((student) => {
+    if (!markedStudents.length) return;
+    const targets = markedStudents.filter((student) => {
       const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
@@ -918,56 +937,63 @@ export const AttendanceDashboard = () => {
     const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
-      const status = getStudentAttendanceStatus(student);
-      const message = buildAttendanceMessage({
-        studentName: student.full_name,
-        parentName: student.parent_name,
-        classLabel,
-        date: format(new Date(selectedDate), "dd MMM yyyy"),
-        status,
-        language: messageLanguage,
-        template: messageTemplates[messageLanguage][status],
-      });
-      const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
-      if (!raw) {
+      const phone = getParentMessageTarget(student);
+      if (!phone) {
         skipped += 1;
         return;
       }
-      const phone = raw.length === 10 ? `91${raw}` : raw;
-      messages.push({ phone, message, name: student.full_name });
+      messages.push({ phone, message: buildStudentAttendanceMessage(student), name: student.full_name });
     });
     if (!messages.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    const combinedMessage = messages.map((item, index) => `${index + 1}. ${item.name}\n${item.message}`).join("\n\n--------------------\n\n");
-    window.open(buildWhatsAppUrl(messages[0].phone, combinedMessage), "_blank", "noopener,noreferrer");
+    messages.forEach((item) => {
+      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    });
     toast({
       title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
       description: skipped
-        ? `${skipped} skipped (no phone). One WhatsApp window opens with all messages together.`
-        : "One WhatsApp window opens with all messages together, so the browser will not block bulk sending.",
+        ? `${skipped} skipped (no phone). Each parent gets only their own student's message.`
+        : "Each parent gets only their own student's message in a separate WhatsApp chat.",
     });
   };
 
-  const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
-    const status = getStudentAttendanceStatus(student);
-    const message = buildAttendanceMessage({
-      studentName: student.full_name,
-      parentName: student.parent_name,
-      classLabel,
-      date: format(new Date(selectedDate), "dd MMM yyyy"),
-      status,
-      language: messageLanguage,
-      template: messageTemplates[messageLanguage][status],
+  const sendBulkSms = (filterStatus?: AttendanceStatus) => {
+    if (!markedStudents.length) return;
+    const targets = markedStudents.filter((student) => {
+      const status = getStudentAttendanceStatus(student);
+      return filterStatus ? status === filterStatus : true;
     });
-    const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
-    if (!raw) {
+    const messages = targets
+      .map((student) => ({ phone: getParentMessageTarget(student), message: buildStudentAttendanceMessage(student) }))
+      .filter((item) => item.phone);
+    if (!messages.length) {
+      toast({ title: "No phone numbers", description: "Add parent phone numbers before sending SMS.", variant: "destructive" });
+      return;
+    }
+    messages.forEach((item) => {
+      window.open(buildSmsUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    });
+    toast({ title: `SMS ready for ${messages.length} parent${messages.length === 1 ? "" : "s"}`, description: "Your device SMS app opens one text per parent number." });
+  };
+
+  const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
+    const phone = getParentMessageTarget(student);
+    if (!phone) {
       toast({ title: "No WhatsApp number", description: "Add a parent or WhatsApp phone for this student first.", variant: "destructive" });
       return;
     }
-    const phone = raw.length === 10 ? `91${raw}` : raw;
-    openWhatsApp(phone, message);
+    openWhatsApp(phone, buildStudentAttendanceMessage(student));
+  };
+
+  const sendAttendanceSms = (student: StudentWithAnalytics) => {
+    const phone = getParentMessageTarget(student);
+    if (!phone) {
+      toast({ title: "No parent phone", description: "Add a parent phone number for this student first.", variant: "destructive" });
+      return;
+    }
+    openSms(phone, buildStudentAttendanceMessage(student));
   };
 
   const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
