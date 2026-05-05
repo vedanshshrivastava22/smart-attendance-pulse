@@ -1519,11 +1519,11 @@ export const AttendanceDashboard = () => {
     const deductionRows: [string, string][] = [
       ["Deductions", formatCurrency(item.deductions)],
     ];
-    if (s.show_pf) deductionRows.push(["PF", formatCurrency((item as any).pf ?? 0)]);
-    if (s.show_esi) deductionRows.push(["ESI", formatCurrency((item as any).esi ?? 0)]);
+    if (s.show_pf) deductionRows.push(["PF", formatCurrency(item.pf ?? 0)]);
+    if (s.show_esi) deductionRows.push(["ESI", formatCurrency(item.esi ?? 0)]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 6,
+      startY: (doc as AutoTableDocument).lastAutoTable?.finalY ?? y + 6,
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 2.5 },
       head: [["Earnings", "Amount", "Deductions", "Amount"]],
@@ -1538,7 +1538,7 @@ export const AttendanceDashboard = () => {
       footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
     });
 
-    let endY = (doc as any).lastAutoTable.finalY + 10;
+    let endY = ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 10;
     if (item.notes) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -1609,8 +1609,8 @@ export const AttendanceDashboard = () => {
     setBaseSalary(String(item.base_salary ?? ""));
     setAllowances(String(item.allowances ?? ""));
     setDeductions(String(item.deductions ?? ""));
-    setPf(String((item as any).pf ?? ""));
-    setEsi(String((item as any).esi ?? ""));
+    setPf(String(item.pf ?? ""));
+    setEsi(String(item.esi ?? ""));
     setPayrollStatus(item.status);
     setPayrollNotes(item.notes ?? "");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
