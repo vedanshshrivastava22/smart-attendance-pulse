@@ -174,6 +174,22 @@ export const openWhatsApp = (phone: string, message: string) => {
   }
 };
 
+export const buildSmsUrl = (phone: string, message: string) => {
+  const text = encodeURIComponent(message);
+  const cleanPhone = phone.replace(/[^\d+]/g, "");
+  const isIOS =
+    typeof navigator !== "undefined" &&
+    /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return `sms:${cleanPhone}${isIOS ? "&" : "?"}body=${text}`;
+};
+
+export const openSms = (phone: string, message: string) => {
+  const url = buildSmsUrl(phone, message);
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+};
+
 export const formatPercent = (value?: number | null) => `${Math.round(value ?? 0)}%`;
 
 export const todayDate = () => new Date().toISOString().slice(0, 10);

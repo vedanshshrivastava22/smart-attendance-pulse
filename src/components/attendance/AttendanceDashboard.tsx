@@ -41,8 +41,10 @@ import {
   attendanceLabels,
   attendanceStatuses,
   buildAttendanceMessage,
+  buildSmsUrl,
   buildWhatsAppUrl,
   openWhatsApp,
+  openSms,
   buildDailyReportMessage,
   buildResultMessage,
   classOptions,
@@ -87,6 +89,7 @@ type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
 type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 
 type ResultSubject = { name: string; max: number; obtained: number };
+type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
 
 const defaultBranding = {
   id: "" as string,
@@ -423,6 +426,8 @@ export const AttendanceDashboard = () => {
   );
 
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, AttendanceStatus>>({});
+  const [studentDraft, setStudentDraft] = useState({ id: "", full_name: "", roll_number: "", parent_name: "", parent_phone: "", whatsapp_phone: "" });
+  const [savingStudentRecord, setSavingStudentRecord] = useState(false);
   const [studentImportPreview, setStudentImportPreview] = useState<StudentImportRow[]>([]);
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<AttendanceImportRow[]>([]);
   const [lastImportSheetName, setLastImportSheetName] = useState("");
@@ -468,16 +473,21 @@ export const AttendanceDashboard = () => {
   const getStudentAttendanceStatus = (student: StudentWithAnalytics) =>
     attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present";
 
+  const markedStudents = useMemo(
+    () => filteredStudents.filter((student) => Boolean(attendanceDrafts[student.id] || dailyRecordByStudentId.has(student.id))),
+    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+  );
+
   const bulkStatusCounts = useMemo(
     () =>
       attendanceStatuses.reduce(
         (counts, status) => ({
           ...counts,
-          [status]: filteredStudents.filter((student) => getStudentAttendanceStatus(student) === status).length,
+          [status]: markedStudents.filter((student) => (attendanceDrafts[student.id] ?? dailyRecordByStudentId.get(student.id)?.status ?? "present") === status).length,
         }),
         { present: 0, absent: 0, leave: 0, holiday: 0 } as Record<AttendanceStatus, number>,
       ),
-    [attendanceDrafts, dailyRecordByStudentId, filteredStudents],
+    [attendanceDrafts, dailyRecordByStudentId, markedStudents],
   );
 
   const payrollOverview = useMemo(() => {
@@ -649,7 +659,8 @@ export const AttendanceDashboard = () => {
     students
       .filter((student) => student.class_id === selectedClassId)
       .forEach((student) => {
-        nextDrafts[student.id] = dailyRecordByStudentId.get(student.id)?.status ?? "present";
+        const savedStatus = dailyRecordByStudentId.get(student.id)?.status;
+        if (savedStatus) nextDrafts[student.id] = savedStatus;
       });
     setAttendanceDrafts((current) => ({ ...current, ...nextDrafts }));
   }, [dailyRecordByStudentId, selectedClassId, students]);
@@ -832,16 +843,16 @@ export const AttendanceDashboard = () => {
       toast({ title: `${attendanceLabels[status]} marked`, description: `${student.full_name} updated successfully.` });
     }
 
-    await refreshAll();
+    await fetchDailyRecords(selectedClassId, selectedDate);
     setSavingStudentId(null);
   };
 
   const saveAllAttendance = async () => {
-    if (!selectedClassId || !filteredStudents.length) return;
+    if (!selectedClassId || !markedStudents.length) return;
     setSavingStudentId("__bulk__");
     let success = 0;
     let failed = 0;
-    for (const student of filteredStudents) {
+    for (const student of markedStudents) {
       const status = attendanceDrafts[student.id] ?? "present";
       const message = buildAttendanceMessage({
         studentName: student.full_name,
@@ -893,12 +904,31 @@ export const AttendanceDashboard = () => {
       description: `${success} marked, ${failed} failed for ${classLabel}.`,
       variant: failed ? "destructive" : "default",
     });
-    await refreshAll();
+    await fetchDailyRecords(selectedClassId, selectedDate);
+  };
+
+  const getParentMessageTarget = (student: StudentWithAnalytics) => {
+    const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
+    if (!raw) return "";
+    return raw.length === 10 ? `91${raw}` : raw;
+  };
+
+  const buildStudentAttendanceMessage = (student: StudentWithAnalytics) => {
+    const status = getStudentAttendanceStatus(student);
+    return buildAttendanceMessage({
+      studentName: student.full_name,
+      parentName: student.parent_name,
+      classLabel,
+      date: format(new Date(selectedDate), "dd MMM yyyy"),
+      status,
+      language: messageLanguage,
+      template: messageTemplates[messageLanguage][status],
+    });
   };
 
   const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
-    if (!filteredStudents.length) return;
-    const targets = filteredStudents.filter((student) => {
+    if (!markedStudents.length) return;
+    const targets = markedStudents.filter((student) => {
       const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
@@ -909,56 +939,124 @@ export const AttendanceDashboard = () => {
     const messages: Array<{ phone: string; message: string; name: string }> = [];
     let skipped = 0;
     targets.forEach((student) => {
-      const status = getStudentAttendanceStatus(student);
-      const message = buildAttendanceMessage({
-        studentName: student.full_name,
-        parentName: student.parent_name,
-        classLabel,
-        date: format(new Date(selectedDate), "dd MMM yyyy"),
-        status,
-        language: messageLanguage,
-        template: messageTemplates[messageLanguage][status],
-      });
-      const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
-      if (!raw) {
+      const phone = getParentMessageTarget(student);
+      if (!phone) {
         skipped += 1;
         return;
       }
-      const phone = raw.length === 10 ? `91${raw}` : raw;
-      messages.push({ phone, message, name: student.full_name });
+      messages.push({ phone, message: buildStudentAttendanceMessage(student), name: student.full_name });
     });
     if (!messages.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    const combinedMessage = messages.map((item, index) => `${index + 1}. ${item.name}\n${item.message}`).join("\n\n--------------------\n\n");
-    window.open(buildWhatsAppUrl(messages[0].phone, combinedMessage), "_blank", "noopener,noreferrer");
+    messages.forEach((item) => {
+      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    });
     toast({
       title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
       description: skipped
-        ? `${skipped} skipped (no phone). One WhatsApp window opens with all messages together.`
-        : "One WhatsApp window opens with all messages together, so the browser will not block bulk sending.",
+        ? `${skipped} skipped (no phone). Each parent gets only their own student's message.`
+        : "Each parent gets only their own student's message in a separate WhatsApp chat.",
     });
   };
 
-  const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
-    const status = getStudentAttendanceStatus(student);
-    const message = buildAttendanceMessage({
-      studentName: student.full_name,
-      parentName: student.parent_name,
-      classLabel,
-      date: format(new Date(selectedDate), "dd MMM yyyy"),
-      status,
-      language: messageLanguage,
-      template: messageTemplates[messageLanguage][status],
+  const sendBulkSms = (filterStatus?: AttendanceStatus) => {
+    if (!markedStudents.length) return;
+    const targets = markedStudents.filter((student) => {
+      const status = getStudentAttendanceStatus(student);
+      return filterStatus ? status === filterStatus : true;
     });
-    const raw = (student.whatsapp_phone || student.parent_phone || "").replace(/[^\d]/g, "");
-    if (!raw) {
+    const messages = targets
+      .map((student) => ({ phone: getParentMessageTarget(student), message: buildStudentAttendanceMessage(student) }))
+      .filter((item) => item.phone);
+    if (!messages.length) {
+      toast({ title: "No phone numbers", description: "Add parent phone numbers before sending SMS.", variant: "destructive" });
+      return;
+    }
+    messages.forEach((item) => {
+      window.open(buildSmsUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    });
+    toast({ title: `SMS ready for ${messages.length} parent${messages.length === 1 ? "" : "s"}`, description: "Your device SMS app opens one text per parent number." });
+  };
+
+  const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
+    const phone = getParentMessageTarget(student);
+    if (!phone) {
       toast({ title: "No WhatsApp number", description: "Add a parent or WhatsApp phone for this student first.", variant: "destructive" });
       return;
     }
-    const phone = raw.length === 10 ? `91${raw}` : raw;
-    openWhatsApp(phone, message);
+    openWhatsApp(phone, buildStudentAttendanceMessage(student));
+  };
+
+  const sendAttendanceSms = (student: StudentWithAnalytics) => {
+    const phone = getParentMessageTarget(student);
+    if (!phone) {
+      toast({ title: "No parent phone", description: "Add a parent phone number for this student first.", variant: "destructive" });
+      return;
+    }
+    openSms(phone, buildStudentAttendanceMessage(student));
+  };
+
+  const resetStudentDraft = () => setStudentDraft({ id: "", full_name: "", roll_number: "", parent_name: "", parent_phone: "", whatsapp_phone: "" });
+
+  const editStudentRecord = (student: StudentWithAnalytics) => {
+    setStudentDraft({
+      id: student.id,
+      full_name: student.full_name,
+      roll_number: student.roll_number,
+      parent_name: student.parent_name ?? "",
+      parent_phone: student.parent_phone,
+      whatsapp_phone: student.whatsapp_phone ?? "",
+    });
+  };
+
+  const saveManualStudent = async () => {
+    if (!selectedClassId || !studentDraft.full_name.trim() || !studentDraft.roll_number.trim() || !studentDraft.parent_phone.trim()) {
+      toast({ title: "Student details required", description: "Enter name, roll number, and parent contact number.", variant: "destructive" });
+      return;
+    }
+    setSavingStudentRecord(true);
+    try {
+      const payload = {
+        class_id: selectedClassId,
+        full_name: studentDraft.full_name.trim(),
+        roll_number: studentDraft.roll_number.trim(),
+        parent_name: studentDraft.parent_name.trim() || null,
+        parent_phone: normalizePhone(studentDraft.parent_phone),
+        whatsapp_phone: normalizePhone(studentDraft.whatsapp_phone || studentDraft.parent_phone),
+        preferred_language: messageLanguage,
+        is_active: true,
+      };
+      const res = studentDraft.id
+        ? await supabase.from("students").update(payload).eq("id", studentDraft.id).select().single()
+        : await supabase.from("students").insert(payload).select().single();
+      if (res.error) throw res.error;
+      resetStudentDraft();
+      toast({ title: studentDraft.id ? "Student updated" : "Student added", description: `Saved permanently in ${classLabel}.` });
+      await refreshAll();
+    } catch (error) {
+      toast({ title: "Student not saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingStudentRecord(false);
+    }
+  };
+
+  const deleteStudentRecord = async (student: StudentWithAnalytics) => {
+    if (!window.confirm(`Remove ${student.full_name} from ${classLabel}?`)) return;
+    const { error } = await supabase.from("students").delete().eq("id", student.id);
+    if (error) {
+      toast({ title: "Could not remove student", description: error.message, variant: "destructive" });
+      return;
+    }
+    setStudents((prev) => prev.filter((item) => item.id !== student.id));
+    setAttendanceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[student.id];
+      return next;
+    });
+    if (studentDraft.id === student.id) resetStudentDraft();
+    toast({ title: "Student removed", description: `${student.full_name} was removed from ${classLabel}.` });
   };
 
   const uploadImportFile = async (file: File, sourceName: string, summary: Json, rowsImported: number) => {
@@ -1421,11 +1519,11 @@ export const AttendanceDashboard = () => {
     const deductionRows: [string, string][] = [
       ["Deductions", formatCurrency(item.deductions)],
     ];
-    if (s.show_pf) deductionRows.push(["PF", formatCurrency((item as any).pf ?? 0)]);
-    if (s.show_esi) deductionRows.push(["ESI", formatCurrency((item as any).esi ?? 0)]);
+    if (s.show_pf) deductionRows.push(["PF", formatCurrency(item.pf ?? 0)]);
+    if (s.show_esi) deductionRows.push(["ESI", formatCurrency(item.esi ?? 0)]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 6,
+      startY: (doc as AutoTableDocument).lastAutoTable?.finalY ?? y + 6,
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 2.5 },
       head: [["Earnings", "Amount", "Deductions", "Amount"]],
@@ -1440,7 +1538,7 @@ export const AttendanceDashboard = () => {
       footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
     });
 
-    let endY = (doc as any).lastAutoTable.finalY + 10;
+    let endY = ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 10;
     if (item.notes) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -1511,8 +1609,8 @@ export const AttendanceDashboard = () => {
     setBaseSalary(String(item.base_salary ?? ""));
     setAllowances(String(item.allowances ?? ""));
     setDeductions(String(item.deductions ?? ""));
-    setPf(String((item as any).pf ?? ""));
-    setEsi(String((item as any).esi ?? ""));
+    setPf(String(item.pf ?? ""));
+    setEsi(String(item.esi ?? ""));
     setPayrollStatus(item.status);
     setPayrollNotes(item.notes ?? "");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1812,7 +1910,7 @@ export const AttendanceDashboard = () => {
 
     const subs = (r.subjects as unknown as ResultSubject[]) ?? [];
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 6,
+      startY: ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 6,
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 2.5 },
       head: [["Subject", "Total Marks", "Marks Obtained", "%"]],
@@ -1822,7 +1920,7 @@ export const AttendanceDashboard = () => {
       footStyles: { fillColor: [220, 230, 245], textColor: 0, fontStyle: "bold" },
     });
 
-    let endY = (doc as any).lastAutoTable.finalY + 8;
+    let endY = ((doc as AutoTableDocument).lastAutoTable?.finalY ?? y) + 8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text(`Result: ${r.overall_grade ?? "-"}`, 15, endY);
@@ -2094,13 +2192,17 @@ export const AttendanceDashboard = () => {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/60 p-3">
-                      <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !filteredStudents.length}>
+                      <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !markedStudents.length}>
                         <Send className="h-4 w-4" />
-                        {savingStudentId === "__bulk__" ? "Saving all..." : `Save all (${filteredStudents.length})`}
+                        {savingStudentId === "__bulk__" ? "Saving marked..." : `Save marked (${markedStudents.length})`}
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!filteredStudents.length}>
+                      <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!markedStudents.length}>
                         <MessageCircle className="h-4 w-4" />
-                        WhatsApp all ({filteredStudents.length})
+                        WhatsApp marked ({markedStudents.length})
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => sendBulkSms()} disabled={!markedStudents.length}>
+                        <Phone className="h-4 w-4" />
+                        SMS marked ({markedStudents.length})
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
                         <Download className="h-4 w-4" />
@@ -2121,12 +2223,27 @@ export const AttendanceDashboard = () => {
                           </Button>
                         ))}
                       </div>
+                      <div className="flex w-full flex-wrap gap-1.5 border-t border-border/60 pt-2">
+                        {attendanceStatuses.map((status) => (
+                          <Button
+                            key={`sms-${status}`}
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
+                            disabled={!bulkStatusCounts[status]}
+                            onClick={() => sendBulkSms(status)}
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                            SMS {attendanceLabels[status]} ({bulkStatusCounts[status]})
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                     {loading ? (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Loading roster…</div>
                     ) : filteredStudents.length ? (
                       filteredStudents.map((student, index) => {
-                        const currentStatus = attendanceDrafts[student.id] ?? "present";
+                        const currentStatus = getStudentAttendanceStatus(student);
                         const attendancePercent = student.analytics?.attendance_percentage ?? 0;
                         return (
                           <motion.div
@@ -2191,6 +2308,15 @@ export const AttendanceDashboard = () => {
                               >
                                 <MessageCircle className="h-4 w-4" />
                                 WhatsApp
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 min-w-[120px]"
+                                onClick={() => sendAttendanceSms(student)}
+                              >
+                                <Phone className="h-4 w-4" />
+                                SMS
                               </Button>
                             </div>
                           </motion.div>
@@ -2328,6 +2454,76 @@ export const AttendanceDashboard = () => {
                         ))}
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/70 bg-panel/88 shadow-[var(--shadow-soft)] xl:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="font-display text-2xl">Manual student entry</CardTitle>
+                    <CardDescription>Add, edit, or remove students for the selected class without Excel.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-6 lg:grid-cols-[0.85fr,1.15fr]">
+                    <div className="space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Class</Label>
+                          <Input value={classLabel} disabled className="bg-muted/60" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Roll number</Label>
+                          <Input value={studentDraft.roll_number} onChange={(e) => setStudentDraft({ ...studentDraft, roll_number: e.target.value })} className="bg-background/80" />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Student name</Label>
+                        <Input value={studentDraft.full_name} onChange={(e) => setStudentDraft({ ...studentDraft, full_name: e.target.value })} className="bg-background/80" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Parent name</Label>
+                        <Input value={studentDraft.parent_name} onChange={(e) => setStudentDraft({ ...studentDraft, parent_name: e.target.value })} className="bg-background/80" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Parent contact number</Label>
+                          <Input type="tel" value={studentDraft.parent_phone} onChange={(e) => setStudentDraft({ ...studentDraft, parent_phone: e.target.value })} className="bg-background/80" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>WhatsApp number</Label>
+                          <Input type="tel" value={studentDraft.whatsapp_phone} onChange={(e) => setStudentDraft({ ...studentDraft, whatsapp_phone: e.target.value })} placeholder="Same as parent contact" className="bg-background/80" />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => void saveManualStudent()} disabled={savingStudentRecord || !selectedClassId} className="flex-1">
+                          {savingStudentRecord ? "Saving..." : studentDraft.id ? "Update student" : "Add student"}
+                        </Button>
+                        {studentDraft.id && <Button variant="outline" onClick={resetStudentDraft}>Cancel</Button>}
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">Saved students in {classLabel}</p>
+                        <Badge variant="secondary">{filteredStudents.length}</Badge>
+                      </div>
+                      <div className="max-h-[480px] space-y-2 overflow-auto pr-1">
+                        {filteredStudents.length ? filteredStudents.map((student) => (
+                          <div key={`manage-${student.id}`} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-medium text-foreground">{student.full_name}</p>
+                                <p className="text-sm text-muted-foreground">Roll {student.roll_number} · {student.parent_name || "Parent name pending"}</p>
+                                <p className="text-xs text-muted-foreground">{student.whatsapp_phone || student.parent_phone}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => editStudentRecord(student)}><UserCog className="h-4 w-4" />Edit</Button>
+                                <Button size="sm" variant="outline" onClick={() => void deleteStudentRecord(student)}>Remove</Button>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">No manual or Excel students saved for this class yet.</div>
+                        )}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -2473,7 +2669,7 @@ export const AttendanceDashboard = () => {
                       </div>
                       <div className="space-y-1.5">
                         <Label>Overall result</Label>
-                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as any)}>
+                        <Select value={resultGrade} onValueChange={(v) => setResultGrade(v as "Pass" | "Fail" | "Compartment")}>
                           <SelectTrigger className="bg-background/80"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Pass">Pass</SelectItem>
