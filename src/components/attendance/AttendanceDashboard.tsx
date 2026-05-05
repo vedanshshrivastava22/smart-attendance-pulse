@@ -2242,7 +2242,7 @@ export const AttendanceDashboard = () => {
                       <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 p-6 text-sm text-muted-foreground">Loading roster…</div>
                     ) : filteredStudents.length ? (
                       filteredStudents.map((student, index) => {
-                        const currentStatus = attendanceDrafts[student.id] ?? "present";
+                        const currentStatus = getStudentAttendanceStatus(student);
                         const attendancePercent = student.analytics?.attendance_percentage ?? 0;
                         return (
                           <motion.div
@@ -2307,6 +2307,15 @@ export const AttendanceDashboard = () => {
                               >
                                 <MessageCircle className="h-4 w-4" />
                                 WhatsApp
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 min-w-[120px]"
+                                onClick={() => sendAttendanceSms(student)}
+                              >
+                                <Phone className="h-4 w-4" />
+                                SMS
                               </Button>
                             </div>
                           </motion.div>
