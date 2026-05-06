@@ -3162,6 +3162,33 @@ export const AttendanceDashboard = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {bulkQueue.length > 0 && bulkIndex < bulkQueue.length && (
+          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-border/70 bg-panel/95 p-4 shadow-[var(--shadow-elevated)] backdrop-blur-md sm:inset-x-auto sm:right-6 sm:left-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {bulkChannel === "whatsapp" ? "WhatsApp" : "SMS"} queue · {bulkLabel}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                  {bulkIndex + 1} / {bulkQueue.length} · {bulkQueue[bulkIndex]?.name}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">+{bulkQueue[bulkIndex]?.phone}</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={cancelBulkQueue}>Close</Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" className="flex-1" onClick={openBulkCurrent}>
+                {bulkChannel === "whatsapp" ? <MessageCircle className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+                Send next
+              </Button>
+              <Button size="sm" variant="outline" onClick={skipBulkCurrent}>Skip</Button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Browsers block sending many chats at once. Tap "Send next" for each parent — each opens that parent's own chat with their child's message.
+            </p>
+          </div>
+        )}
       </main>
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
