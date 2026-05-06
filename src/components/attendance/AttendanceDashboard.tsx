@@ -935,59 +935,61 @@ export const AttendanceDashboard = () => {
     });
   };
 
-  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
-    if (!markedStudents.length) return;
+  const collectBulkTargets = (filterStatus?: AttendanceStatus): BulkQueueItem[] => {
     const targets = markedStudents.filter((student) => {
       const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
-    if (!targets.length) {
-      toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
-      return;
-    }
-    const messages: Array<{ phone: string; message: string; name: string }> = [];
-    let skipped = 0;
+    const items: BulkQueueItem[] = [];
     targets.forEach((student) => {
       const phone = getParentMessageTarget(student);
-      if (!phone) {
-        skipped += 1;
-        return;
-      }
-      messages.push({ phone, message: buildStudentAttendanceMessage(student), name: student.full_name });
+      if (!phone) return;
+      items.push({ name: student.full_name, phone, message: buildStudentAttendanceMessage(student) });
     });
-    if (!messages.length) {
+    return items;
+  };
+
+  const startBulkQueue = (channel: BulkChannel, filterStatus?: AttendanceStatus) => {
+    if (!markedStudents.length) {
+      toast({ title: "No students marked", description: "Mark attendance first.", variant: "destructive" });
+      return;
+    }
+    const items = collectBulkTargets(filterStatus);
+    if (!items.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    messages.forEach((item) => {
-      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
-    });
+    const label = filterStatus ? attendanceLabels[filterStatus] : "All marked";
+    setBulkChannel(channel);
+    setBulkQueue(items);
+    setBulkLabel(label);
+    setBulkIndex(0);
     toast({
-      title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
-      description: skipped
-        ? `${skipped} skipped (no phone). Each parent gets only their own student's message.`
-        : "Each parent gets only their own student's message in a separate WhatsApp chat.",
+      title: `${channel === "whatsapp" ? "WhatsApp" : "SMS"} queue ready`,
+      description: `${items.length} ${label.toLowerCase()} parent${items.length === 1 ? "" : "s"}. Tap "Send next" to open each chat one-by-one (browsers block bulk popups).`,
     });
   };
 
-  const sendBulkSms = (filterStatus?: AttendanceStatus) => {
-    if (!markedStudents.length) return;
-    const targets = markedStudents.filter((student) => {
-      const status = getStudentAttendanceStatus(student);
-      return filterStatus ? status === filterStatus : true;
-    });
-    const messages = targets
-      .map((student) => ({ phone: getParentMessageTarget(student), message: buildStudentAttendanceMessage(student) }))
-      .filter((item) => item.phone);
-    if (!messages.length) {
-      toast({ title: "No phone numbers", description: "Add parent phone numbers before sending SMS.", variant: "destructive" });
-      return;
-    }
-    messages.forEach((item) => {
+  const openBulkCurrent = () => {
+    const item = bulkQueue[bulkIndex];
+    if (!item) return;
+    if (bulkChannel === "whatsapp") {
+      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    } else {
       window.open(buildSmsUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
-    });
-    toast({ title: `SMS ready for ${messages.length} parent${messages.length === 1 ? "" : "s"}`, description: "Your device SMS app opens one text per parent number." });
+    }
+    setBulkIndex((idx) => idx + 1);
   };
+
+  const skipBulkCurrent = () => setBulkIndex((idx) => idx + 1);
+  const cancelBulkQueue = () => {
+    setBulkQueue([]);
+    setBulkIndex(0);
+    setBulkLabel("");
+  };
+
+  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => startBulkQueue("whatsapp", filterStatus);
+  const sendBulkSms = (filterStatus?: AttendanceStatus) => startBulkQueue("sms", filterStatus);
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const phone = getParentMessageTarget(student);
