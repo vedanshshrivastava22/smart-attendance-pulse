@@ -2202,52 +2202,60 @@ export const AttendanceDashboard = () => {
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/60 p-3">
-                      <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !markedStudents.length}>
-                        <Send className="h-4 w-4" />
-                        {savingStudentId === "__bulk__" ? "Saving marked..." : `Save marked (${markedStudents.length})`}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!markedStudents.length}>
-                        <MessageCircle className="h-4 w-4" />
-                        WhatsApp marked ({markedStudents.length})
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => sendBulkSms()} disabled={!markedStudents.length}>
-                        <Phone className="h-4 w-4" />
-                        SMS marked ({markedStudents.length})
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
-                        <Download className="h-4 w-4" />
-                        Export today's attendance
-                      </Button>
-                      <div className="ml-auto flex flex-wrap gap-1.5">
-                        {attendanceStatuses.map((status) => (
-                          <Button
-                            key={status}
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
-                            disabled={!bulkStatusCounts[status]}
-                            onClick={() => sendBulkWhatsApp(status)}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            {attendanceLabels[status]} ({bulkStatusCounts[status]})
-                          </Button>
-                        ))}
+                    <div className="space-y-3 rounded-2xl border border-border/70 bg-background/60 p-3">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !markedStudents.length}>
+                          <Send className="h-4 w-4" />
+                          {savingStudentId === "__bulk__" ? "Saving..." : `Save (${markedStudents.length})`}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!markedStudents.length}>
+                          <MessageCircle className="h-4 w-4" />
+                          WhatsApp ({markedStudents.length})
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => sendBulkSms()} disabled={!markedStudents.length}>
+                          <Phone className="h-4 w-4" />
+                          SMS ({markedStudents.length})
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
+                          <Download className="h-4 w-4" />
+                          Export
+                        </Button>
                       </div>
-                      <div className="flex w-full flex-wrap gap-1.5 border-t border-border/60 pt-2">
-                        {attendanceStatuses.map((status) => (
-                          <Button
-                            key={`sms-${status}`}
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
-                            disabled={!bulkStatusCounts[status]}
-                            onClick={() => sendBulkSms(status)}
-                          >
-                            <Phone className="h-3.5 w-3.5" />
-                            SMS {attendanceLabels[status]} ({bulkStatusCounts[status]})
-                          </Button>
-                        ))}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">WhatsApp by group</p>
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {attendanceStatuses.map((status) => (
+                            <Button
+                              key={status}
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 rounded-full border border-border/60 px-2 text-xs"
+                              disabled={!bulkStatusCounts[status]}
+                              onClick={() => sendBulkWhatsApp(status)}
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              {attendanceLabels[status]} ({bulkStatusCounts[status]})
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">SMS by group</p>
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {attendanceStatuses.map((status) => (
+                            <Button
+                              key={`sms-${status}`}
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 rounded-full border border-border/60 px-2 text-xs"
+                              disabled={!bulkStatusCounts[status]}
+                              onClick={() => sendBulkSms(status)}
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                              {attendanceLabels[status]} ({bulkStatusCounts[status]})
+                            </Button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     {loading ? (
