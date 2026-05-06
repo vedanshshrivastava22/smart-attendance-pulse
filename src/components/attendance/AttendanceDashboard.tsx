@@ -438,6 +438,15 @@ export const AttendanceDashboard = () => {
   const [sendingDailyReport, setSendingDailyReport] = useState(false);
   const [savingPayroll, setSavingPayroll] = useState(false);
 
+  // Sequential bulk-send queue. Browsers block popup loops, so we open
+  // ONE chat per user click and step through the list.
+  type BulkChannel = "whatsapp" | "sms";
+  type BulkQueueItem = { name: string; phone: string; message: string };
+  const [bulkQueue, setBulkQueue] = useState<BulkQueueItem[]>([]);
+  const [bulkChannel, setBulkChannel] = useState<BulkChannel>("whatsapp");
+  const [bulkLabel, setBulkLabel] = useState("");
+  const [bulkIndex, setBulkIndex] = useState(0);
+
   const isAdmin = roles.includes("admin");
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? classes.find((item) => item.class_name === selectedClassName),
@@ -926,59 +935,61 @@ export const AttendanceDashboard = () => {
     });
   };
 
-  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => {
-    if (!markedStudents.length) return;
+  const collectBulkTargets = (filterStatus?: AttendanceStatus): BulkQueueItem[] => {
     const targets = markedStudents.filter((student) => {
       const status = getStudentAttendanceStatus(student);
       return filterStatus ? status === filterStatus : true;
     });
-    if (!targets.length) {
-      toast({ title: "No students to message", description: "Mark attendance first or pick a different status.", variant: "destructive" });
-      return;
-    }
-    const messages: Array<{ phone: string; message: string; name: string }> = [];
-    let skipped = 0;
+    const items: BulkQueueItem[] = [];
     targets.forEach((student) => {
       const phone = getParentMessageTarget(student);
-      if (!phone) {
-        skipped += 1;
-        return;
-      }
-      messages.push({ phone, message: buildStudentAttendanceMessage(student), name: student.full_name });
+      if (!phone) return;
+      items.push({ name: student.full_name, phone, message: buildStudentAttendanceMessage(student) });
     });
-    if (!messages.length) {
+    return items;
+  };
+
+  const startBulkQueue = (channel: BulkChannel, filterStatus?: AttendanceStatus) => {
+    if (!markedStudents.length) {
+      toast({ title: "No students marked", description: "Mark attendance first.", variant: "destructive" });
+      return;
+    }
+    const items = collectBulkTargets(filterStatus);
+    if (!items.length) {
       toast({ title: "No phone numbers", description: "Add parent/WhatsApp numbers for these students.", variant: "destructive" });
       return;
     }
-    messages.forEach((item) => {
-      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
-    });
+    const label = filterStatus ? attendanceLabels[filterStatus] : "All marked";
+    setBulkChannel(channel);
+    setBulkQueue(items);
+    setBulkLabel(label);
+    setBulkIndex(0);
     toast({
-      title: `WhatsApp ready for ${messages.length} ${filterStatus ? attendanceLabels[filterStatus].toLowerCase() : "selected"} student${messages.length === 1 ? "" : "s"}`,
-      description: skipped
-        ? `${skipped} skipped (no phone). Each parent gets only their own student's message.`
-        : "Each parent gets only their own student's message in a separate WhatsApp chat.",
+      title: `${channel === "whatsapp" ? "WhatsApp" : "SMS"} queue ready`,
+      description: `${items.length} ${label.toLowerCase()} parent${items.length === 1 ? "" : "s"}. Tap "Send next" to open each chat one-by-one (browsers block bulk popups).`,
     });
   };
 
-  const sendBulkSms = (filterStatus?: AttendanceStatus) => {
-    if (!markedStudents.length) return;
-    const targets = markedStudents.filter((student) => {
-      const status = getStudentAttendanceStatus(student);
-      return filterStatus ? status === filterStatus : true;
-    });
-    const messages = targets
-      .map((student) => ({ phone: getParentMessageTarget(student), message: buildStudentAttendanceMessage(student) }))
-      .filter((item) => item.phone);
-    if (!messages.length) {
-      toast({ title: "No phone numbers", description: "Add parent phone numbers before sending SMS.", variant: "destructive" });
-      return;
-    }
-    messages.forEach((item) => {
+  const openBulkCurrent = () => {
+    const item = bulkQueue[bulkIndex];
+    if (!item) return;
+    if (bulkChannel === "whatsapp") {
+      window.open(buildWhatsAppUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
+    } else {
       window.open(buildSmsUrl(item.phone, item.message), "_blank", "noopener,noreferrer");
-    });
-    toast({ title: `SMS ready for ${messages.length} parent${messages.length === 1 ? "" : "s"}`, description: "Your device SMS app opens one text per parent number." });
+    }
+    setBulkIndex((idx) => idx + 1);
   };
+
+  const skipBulkCurrent = () => setBulkIndex((idx) => idx + 1);
+  const cancelBulkQueue = () => {
+    setBulkQueue([]);
+    setBulkIndex(0);
+    setBulkLabel("");
+  };
+
+  const sendBulkWhatsApp = (filterStatus?: AttendanceStatus) => startBulkQueue("whatsapp", filterStatus);
+  const sendBulkSms = (filterStatus?: AttendanceStatus) => startBulkQueue("sms", filterStatus);
 
   const sendAttendanceWhatsApp = (student: StudentWithAnalytics) => {
     const phone = getParentMessageTarget(student);
@@ -2191,52 +2202,60 @@ export const AttendanceDashboard = () => {
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by student, roll, or parent" className="max-w-sm border-border/70 bg-background/75" />
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/60 p-3">
-                      <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !markedStudents.length}>
-                        <Send className="h-4 w-4" />
-                        {savingStudentId === "__bulk__" ? "Saving marked..." : `Save marked (${markedStudents.length})`}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!markedStudents.length}>
-                        <MessageCircle className="h-4 w-4" />
-                        WhatsApp marked ({markedStudents.length})
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => sendBulkSms()} disabled={!markedStudents.length}>
-                        <Phone className="h-4 w-4" />
-                        SMS marked ({markedStudents.length})
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
-                        <Download className="h-4 w-4" />
-                        Export today's attendance
-                      </Button>
-                      <div className="ml-auto flex flex-wrap gap-1.5">
-                        {attendanceStatuses.map((status) => (
-                          <Button
-                            key={status}
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
-                            disabled={!bulkStatusCounts[status]}
-                            onClick={() => sendBulkWhatsApp(status)}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            {attendanceLabels[status]} ({bulkStatusCounts[status]})
-                          </Button>
-                        ))}
+                    <div className="space-y-3 rounded-2xl border border-border/70 bg-background/60 p-3">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <Button size="sm" onClick={() => void saveAllAttendance()} disabled={savingStudentId === "__bulk__" || !markedStudents.length}>
+                          <Send className="h-4 w-4" />
+                          {savingStudentId === "__bulk__" ? "Saving..." : `Save (${markedStudents.length})`}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => sendBulkWhatsApp()} disabled={!markedStudents.length}>
+                          <MessageCircle className="h-4 w-4" />
+                          WhatsApp ({markedStudents.length})
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => sendBulkSms()} disabled={!markedStudents.length}>
+                          <Phone className="h-4 w-4" />
+                          SMS ({markedStudents.length})
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => void handleExportTodayAttendance()}>
+                          <Download className="h-4 w-4" />
+                          Export
+                        </Button>
                       </div>
-                      <div className="flex w-full flex-wrap gap-1.5 border-t border-border/60 pt-2">
-                        {attendanceStatuses.map((status) => (
-                          <Button
-                            key={`sms-${status}`}
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 rounded-full border border-border/60 px-3 text-xs"
-                            disabled={!bulkStatusCounts[status]}
-                            onClick={() => sendBulkSms(status)}
-                          >
-                            <Phone className="h-3.5 w-3.5" />
-                            SMS {attendanceLabels[status]} ({bulkStatusCounts[status]})
-                          </Button>
-                        ))}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">WhatsApp by group</p>
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {attendanceStatuses.map((status) => (
+                            <Button
+                              key={status}
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 rounded-full border border-border/60 px-2 text-xs"
+                              disabled={!bulkStatusCounts[status]}
+                              onClick={() => sendBulkWhatsApp(status)}
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              {attendanceLabels[status]} ({bulkStatusCounts[status]})
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">SMS by group</p>
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {attendanceStatuses.map((status) => (
+                            <Button
+                              key={`sms-${status}`}
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 rounded-full border border-border/60 px-2 text-xs"
+                              disabled={!bulkStatusCounts[status]}
+                              onClick={() => sendBulkSms(status)}
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                              {attendanceLabels[status]} ({bulkStatusCounts[status]})
+                            </Button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     {loading ? (
@@ -3151,6 +3170,33 @@ export const AttendanceDashboard = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {bulkQueue.length > 0 && bulkIndex < bulkQueue.length && (
+          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-2xl border border-border/70 bg-panel/95 p-4 shadow-[var(--shadow-elevated)] backdrop-blur-md sm:inset-x-auto sm:right-6 sm:left-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {bulkChannel === "whatsapp" ? "WhatsApp" : "SMS"} queue · {bulkLabel}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                  {bulkIndex + 1} / {bulkQueue.length} · {bulkQueue[bulkIndex]?.name}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">+{bulkQueue[bulkIndex]?.phone}</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={cancelBulkQueue}>Close</Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" className="flex-1" onClick={openBulkCurrent}>
+                {bulkChannel === "whatsapp" ? <MessageCircle className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+                Send next
+              </Button>
+              <Button size="sm" variant="outline" onClick={skipBulkCurrent}>Skip</Button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Browsers block sending many chats at once. Tap "Send next" for each parent — each opens that parent's own chat with their child's message.
+            </p>
+          </div>
+        )}
       </main>
       <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
         <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
