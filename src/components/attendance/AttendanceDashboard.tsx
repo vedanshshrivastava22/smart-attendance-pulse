@@ -438,6 +438,15 @@ export const AttendanceDashboard = () => {
   const [sendingDailyReport, setSendingDailyReport] = useState(false);
   const [savingPayroll, setSavingPayroll] = useState(false);
 
+  // Sequential bulk-send queue. Browsers block popup loops, so we open
+  // ONE chat per user click and step through the list.
+  type BulkChannel = "whatsapp" | "sms";
+  type BulkQueueItem = { name: string; phone: string; message: string };
+  const [bulkQueue, setBulkQueue] = useState<BulkQueueItem[]>([]);
+  const [bulkChannel, setBulkChannel] = useState<BulkChannel>("whatsapp");
+  const [bulkLabel, setBulkLabel] = useState("");
+  const [bulkIndex, setBulkIndex] = useState(0);
+
   const isAdmin = roles.includes("admin");
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? classes.find((item) => item.class_name === selectedClassName),
