@@ -735,17 +735,9 @@ export type Database = {
       }
     }
     Functions: {
-      can_manage_school_data: { Args: { _user_id: string }; Returns: boolean }
       ensure_staff_profile: {
         Args: { _full_name?: string; _phone?: string }
         Returns: Database["public"]["Enums"]["app_role"]
-      }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
       }
     }
     Enums: {
