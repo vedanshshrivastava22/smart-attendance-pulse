@@ -1655,8 +1655,12 @@ export const AttendanceDashboard = () => {
       const path = `${currentUserId}/logo-${Date.now()}.${ext}`;
       const { error } = await supabase.storage.from("payslip-logos").upload(path, file, { upsert: true });
       if (error) throw error;
-      const { data } = supabase.storage.from("payslip-logos").getPublicUrl(path);
-      setPayslipSettings((prev) => ({ ...prev, logo_url: data.publicUrl }));
+      // payslip-logos is a private bucket, so use a long-lived signed URL (≈5 years).
+      const { data, error: signError } = await supabase.storage
+        .from("payslip-logos")
+        .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
+      if (signError || !data) throw signError ?? new Error("Could not generate logo URL");
+      setPayslipSettings((prev) => ({ ...prev, logo_url: data.signedUrl }));
       toast({ title: "Logo uploaded", description: "Don't forget to save settings." });
     } catch (error) {
       toast({ title: "Logo upload failed", description: error instanceof Error ? error.message : "Try a smaller image.", variant: "destructive" });
