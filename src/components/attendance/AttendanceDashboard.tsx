@@ -2073,12 +2073,8 @@ export const AttendanceDashboard = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
-      <motion.div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.24),transparent_32%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.18),transparent_30%)]"
-        animate={{ opacity: [0.75, 1, 0.75] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
+      <ScrollProgress />
+      <AnimatedBackground />
 
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
