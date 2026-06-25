@@ -2708,7 +2708,7 @@ export const AttendanceDashboard = () => {
                         <Label>Subjects</Label>
                         <Button type="button" size="sm" variant="outline" onClick={() => setResultSubjects((p) => [...p, { name: "", max: 100, obtained: 0 }])}>+ Add subject</Button>
                       </div>
-                      <div className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                      <div className="grid grid-cols-[1fr,56px,56px,32px] sm:grid-cols-[1fr,80px,80px,40px] items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wider text-muted-foreground">
                         <span>Subject</span><span>Total</span><span>Obtained</span><span></span>
                       </div>
                       {resultSubjects.map((s, idx) => (
