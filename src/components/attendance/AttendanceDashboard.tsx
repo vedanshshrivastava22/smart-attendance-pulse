@@ -2712,7 +2712,7 @@ export const AttendanceDashboard = () => {
                         <span>Subject</span><span>Total</span><span>Obtained</span><span></span>
                       </div>
                       {resultSubjects.map((s, idx) => (
-                        <div key={idx} className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2">
+                        <div key={idx} className="grid grid-cols-[1fr,56px,56px,32px] sm:grid-cols-[1fr,80px,80px,40px] items-center gap-1.5 sm:gap-2">
                           <Input value={s.name} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="e.g. Math" className="bg-background/80" />
                           <Input type="number" min="0" value={s.max} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, max: Number(e.target.value) } : x))} className="bg-background/80" />
                           <Input type="number" min="0" value={s.obtained} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, obtained: Number(e.target.value) } : x))} className="bg-background/80" />
