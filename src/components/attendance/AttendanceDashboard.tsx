@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
+import { AnimatedBackground, Reveal, ScrollProgress } from "./MotionGraphics";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
