@@ -3140,6 +3140,8 @@ export const AttendanceDashboard = () => {
             </Card>
           </div>
         </section>
+        </Reveal>
+
 
         <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
           <DialogContent className="max-w-lg">
