@@ -2180,6 +2180,7 @@ export const AttendanceDashboard = () => {
           </div>
         </section>
 
+        <Reveal>
         <section className="grid gap-6 xl:grid-cols-[1.4fr,0.6fr]">
           <div className="space-y-6">
             <Tabs defaultValue="attendance" className="space-y-6">
