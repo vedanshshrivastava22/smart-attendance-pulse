@@ -1977,8 +1977,8 @@ export const AttendanceDashboard = () => {
   if (!currentUserId) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-        <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.26),transparent_30%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.22),transparent_28%)]" />
+        <ScrollProgress />
+        <AnimatedBackground />
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
