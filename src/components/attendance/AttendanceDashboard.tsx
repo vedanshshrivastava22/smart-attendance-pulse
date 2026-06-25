@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
+import { AnimatedBackground, Reveal, ScrollProgress } from "./MotionGraphics";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
@@ -296,7 +297,7 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     .filter((row) => row.full_name && row.roll_number);
 
 const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
-  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} whileHover={{ y: -3 }}>
+  <motion.div ref={ref} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} whileHover={{ y: -4, scale: 1.015 }}>
     <Card className="h-full border-border/60 bg-card/90 shadow-[var(--shadow-soft)] backdrop-blur-sm transition-shadow hover:shadow-[var(--shadow-elevated)]">
       <CardContent className="flex items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0 space-y-1.5">
@@ -1976,8 +1977,8 @@ export const AttendanceDashboard = () => {
   if (!currentUserId) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-        <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.26),transparent_30%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.22),transparent_28%)]" />
+        <ScrollProgress />
+        <AnimatedBackground />
         <main className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
           <section className="grid w-full gap-6 lg:grid-cols-[1.15fr,0.85fr]">
             <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45 }} className="space-y-6">
@@ -2072,12 +2073,8 @@ export const AttendanceDashboard = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-hero-gradient opacity-90" />
-      <motion.div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary-glow)/0.24),transparent_32%),radial-gradient(circle_at_bottom_right,hsl(var(--secondary)/0.18),transparent_30%)]"
-        animate={{ opacity: [0.75, 1, 0.75] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
+      <ScrollProgress />
+      <AnimatedBackground />
 
       <main className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
@@ -2183,6 +2180,7 @@ export const AttendanceDashboard = () => {
           </div>
         </section>
 
+        <Reveal>
         <section className="grid gap-6 xl:grid-cols-[1.4fr,0.6fr]">
           <div className="space-y-6">
             <Tabs defaultValue="attendance" className="space-y-6">
@@ -3142,6 +3140,8 @@ export const AttendanceDashboard = () => {
             </Card>
           </div>
         </section>
+        </Reveal>
+
 
         <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
           <DialogContent className="max-w-lg">
