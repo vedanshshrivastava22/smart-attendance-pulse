@@ -297,7 +297,7 @@ const mapAttendanceRows = (rows: Record<string, unknown>[], fallbackDate: string
     .filter((row) => row.full_name && row.roll_number);
 
 const StatCard = forwardRef<HTMLDivElement, { title: string; value: string; hint: string; icon: LucideIcon }>(({ title, value, hint, icon: Icon }, ref) => (
-  <motion.div ref={ref} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} whileHover={{ y: -3 }}>
+  <motion.div ref={ref} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} whileHover={{ y: -4, scale: 1.015 }}>
     <Card className="h-full border-border/60 bg-card/90 shadow-[var(--shadow-soft)] backdrop-blur-sm transition-shadow hover:shadow-[var(--shadow-elevated)]">
       <CardContent className="flex items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0 space-y-1.5">
