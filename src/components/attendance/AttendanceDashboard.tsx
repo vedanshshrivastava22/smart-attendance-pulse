@@ -2708,11 +2708,11 @@ export const AttendanceDashboard = () => {
                         <Label>Subjects</Label>
                         <Button type="button" size="sm" variant="outline" onClick={() => setResultSubjects((p) => [...p, { name: "", max: 100, obtained: 0 }])}>+ Add subject</Button>
                       </div>
-                      <div className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                      <div className="grid grid-cols-[1fr,56px,56px,32px] sm:grid-cols-[1fr,80px,80px,40px] items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs uppercase tracking-wider text-muted-foreground">
                         <span>Subject</span><span>Total</span><span>Obtained</span><span></span>
                       </div>
                       {resultSubjects.map((s, idx) => (
-                        <div key={idx} className="grid grid-cols-[1fr,80px,80px,40px] items-center gap-2">
+                        <div key={idx} className="grid grid-cols-[1fr,56px,56px,32px] sm:grid-cols-[1fr,80px,80px,40px] items-center gap-1.5 sm:gap-2">
                           <Input value={s.name} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="e.g. Math" className="bg-background/80" />
                           <Input type="number" min="0" value={s.max} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, max: Number(e.target.value) } : x))} className="bg-background/80" />
                           <Input type="number" min="0" value={s.obtained} onChange={(e) => setResultSubjects((p) => p.map((x, i) => i === idx ? { ...x, obtained: Number(e.target.value) } : x))} className="bg-background/80" />

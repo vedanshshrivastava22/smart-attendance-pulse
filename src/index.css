@@ -120,10 +120,17 @@
 
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html,
+  body {
+    @apply bg-background text-foreground antialiased;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
     font-family: 'DM Sans', sans-serif;
     background-image: linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
   }
