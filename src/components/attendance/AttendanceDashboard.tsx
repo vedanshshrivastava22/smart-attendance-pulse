@@ -1725,10 +1725,18 @@ export const AttendanceDashboard = () => {
     if (!currentUserId) return;
     setSavingBranding(true);
     try {
+      const cleanLinks = brandingDraft.footer_links
+        .map((l) => ({ id: l.id, label: l.label.trim(), url: l.url.trim() }))
+        .filter((l) => l.label || l.url);
       const payload = {
         organization_name: brandingDraft.organization_name || "Smart Attendance",
         tagline: brandingDraft.tagline || "",
         logo_url: brandingDraft.logo_url || null,
+        footer_description: brandingDraft.footer_description || null,
+        address: brandingDraft.address || null,
+        contact_email: brandingDraft.contact_email || null,
+        contact_phone: brandingDraft.contact_phone || null,
+        footer_links: cleanLinks,
         updated_by: currentUserId,
       };
       let res;
@@ -1738,8 +1746,7 @@ export const AttendanceDashboard = () => {
         res = await supabase.from("app_branding").insert(payload).select().single();
       }
       if (res.error) throw res.error;
-      const d = res.data as AppBranding;
-      const next = { id: d.id, organization_name: d.organization_name, tagline: d.tagline, logo_url: d.logo_url ?? "" };
+      const next = brandingFromRow(res.data as AppBranding);
       setBranding(next);
       setBrandingDraft(next);
       setBrandingOpen(false);
