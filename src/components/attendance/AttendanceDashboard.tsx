@@ -12,8 +12,12 @@ import {
   IndianRupee,
   LogIn,
   LogOut,
+  MapPin,
+  Mail,
   MessageCircle,
   Phone,
+  Plus,
+  Trash2,
   Send,
   ShieldCheck,
   Sparkles,
@@ -92,12 +96,47 @@ type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 type ResultSubject = { name: string; max: number; obtained: number };
 type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
 
+type FooterLink = { id: string; label: string; url: string };
+
 const defaultBranding = {
   id: "" as string,
   organization_name: "Smart Attendance",
   tagline: "A delightful command center for teachers, admins, and parents.",
   logo_url: "" as string,
+  footer_description: "" as string,
+  address: "" as string,
+  contact_email: "" as string,
+  contact_phone: "" as string,
+  footer_links: [] as FooterLink[],
 };
+
+const normalizeFooterLinks = (raw: unknown): FooterLink[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      const obj = (item ?? {}) as Record<string, unknown>;
+      return {
+        id: typeof obj.id === "string" && obj.id ? obj.id : `link-${index}-${Date.now()}`,
+        label: typeof obj.label === "string" ? obj.label : "",
+        url: typeof obj.url === "string" ? obj.url : "",
+      };
+    })
+    .filter((l) => l.label || l.url);
+};
+
+const brandingFromRow = (b: AppBranding): typeof defaultBranding => ({
+  id: b.id,
+  organization_name: b.organization_name ?? defaultBranding.organization_name,
+  tagline: b.tagline ?? defaultBranding.tagline,
+  logo_url: b.logo_url ?? "",
+  footer_description: b.footer_description ?? "",
+  address: b.address ?? "",
+  contact_email: b.contact_email ?? "",
+  contact_phone: b.contact_phone ?? "",
+  footer_links: normalizeFooterLinks(b.footer_links),
+});
+
+
 
 const defaultPayslipSettings = {
   organization_name: "Your School",
@@ -587,13 +626,7 @@ export const AttendanceDashboard = () => {
       });
     }
     if (brandingRes.data) {
-      const b = brandingRes.data as AppBranding;
-      const next = {
-        id: b.id,
-        organization_name: b.organization_name ?? defaultBranding.organization_name,
-        tagline: b.tagline ?? defaultBranding.tagline,
-        logo_url: b.logo_url ?? "",
-      };
+      const next = brandingFromRow(brandingRes.data as AppBranding);
       setBranding(next);
       setBrandingDraft(next);
     }
@@ -622,7 +655,7 @@ export const AttendanceDashboard = () => {
     // Fetch public branding (works for signed-out visitors too)
     void supabase.from("app_branding").select("*").order("created_at", { ascending: true }).limit(1).maybeSingle().then(({ data }) => {
       if (data) {
-        const next = { id: data.id, organization_name: data.organization_name, tagline: data.tagline, logo_url: data.logo_url ?? "" };
+        const next = brandingFromRow(data as AppBranding);
         setBranding(next);
         setBrandingDraft(next);
       }
@@ -1696,10 +1729,18 @@ export const AttendanceDashboard = () => {
     if (!currentUserId) return;
     setSavingBranding(true);
     try {
+      const cleanLinks = brandingDraft.footer_links
+        .map((l) => ({ id: l.id, label: l.label.trim(), url: l.url.trim() }))
+        .filter((l) => l.label || l.url);
       const payload = {
         organization_name: brandingDraft.organization_name || "Smart Attendance",
         tagline: brandingDraft.tagline || "",
         logo_url: brandingDraft.logo_url || null,
+        footer_description: brandingDraft.footer_description || null,
+        address: brandingDraft.address || null,
+        contact_email: brandingDraft.contact_email || null,
+        contact_phone: brandingDraft.contact_phone || null,
+        footer_links: cleanLinks,
         updated_by: currentUserId,
       };
       let res;
@@ -1709,8 +1750,7 @@ export const AttendanceDashboard = () => {
         res = await supabase.from("app_branding").insert(payload).select().single();
       }
       if (res.error) throw res.error;
-      const d = res.data as AppBranding;
-      const next = { id: d.id, organization_name: d.organization_name, tagline: d.tagline, logo_url: d.logo_url ?? "" };
+      const next = brandingFromRow(res.data as AppBranding);
       setBranding(next);
       setBrandingDraft(next);
       setBrandingOpen(false);
@@ -3144,9 +3184,9 @@ export const AttendanceDashboard = () => {
 
 
         <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Front-page branding</DialogTitle>
+              <DialogTitle>Front-page & footer details</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1.5">
@@ -3167,7 +3207,79 @@ export const AttendanceDashboard = () => {
                   </div>
                 )}
               </div>
+
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-3">
+                <p className="text-sm font-semibold">Footer details</p>
+                <div className="space-y-1.5">
+                  <Label>Footer description</Label>
+                  <Textarea rows={2} placeholder="A short line about your institution" value={brandingDraft.footer_description} onChange={(e) => setBrandingDraft({ ...brandingDraft, footer_description: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Address</Label>
+                  <Textarea rows={2} placeholder="Company / school address" value={brandingDraft.address} onChange={(e) => setBrandingDraft({ ...brandingDraft, address: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Contact email</Label>
+                    <Input type="email" placeholder="hello@school.com" value={brandingDraft.contact_email} onChange={(e) => setBrandingDraft({ ...brandingDraft, contact_email: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Contact phone</Label>
+                    <Input placeholder="+91 98765 43210" value={brandingDraft.contact_phone} onChange={(e) => setBrandingDraft({ ...brandingDraft, contact_phone: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Social & links</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBrandingDraft({ ...brandingDraft, footer_links: [...brandingDraft.footer_links, { id: `link-${Date.now()}`, label: "", url: "" }] })}
+                    >
+                      <Plus className="mr-1 h-4 w-4" /> Add link
+                    </Button>
+                  </div>
+                  {brandingDraft.footer_links.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Add LinkedIn, X, Instagram, website, etc.</p>
+                  )}
+                  {brandingDraft.footer_links.map((link, idx) => (
+                    <div key={link.id} className="flex items-center gap-2">
+                      <Input
+                        className="w-28 shrink-0"
+                        placeholder="LinkedIn"
+                        value={link.label}
+                        onChange={(e) => {
+                          const next = [...brandingDraft.footer_links];
+                          next[idx] = { ...next[idx], label: e.target.value };
+                          setBrandingDraft({ ...brandingDraft, footer_links: next });
+                        }}
+                      />
+                      <Input
+                        placeholder="https://..."
+                        value={link.url}
+                        onChange={(e) => {
+                          const next = [...brandingDraft.footer_links];
+                          next[idx] = { ...next[idx], url: e.target.value };
+                          setBrandingDraft({ ...brandingDraft, footer_links: next });
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-destructive"
+                        onClick={() => setBrandingDraft({ ...brandingDraft, footer_links: brandingDraft.footer_links.filter((_, i) => i !== idx) })}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setBrandingOpen(false)}>Cancel</Button>
               <Button onClick={saveBranding} disabled={savingBranding}>{savingBranding ? "Saving..." : "Save & publish"}</Button>
@@ -3202,18 +3314,98 @@ export const AttendanceDashboard = () => {
           </div>
         )}
       </main>
-      <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background py-6 mt-10">
-        <p className="text-center text-base md:text-lg font-display font-extrabold tracking-wide">
-          <span className="text-gray-800">
-            © {new Date().getFullYear()} All copyrights reserved by
-          </span>{" "}
-          <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_1px_8px_rgba(251,191,36,0.45)]">
-            Analytical Visionary
-          </span>{" "}
-          <span className="text-gray-800">
-            with lots of love
-          </span>
-        </p>
+      <footer className="border-t border-primary/30 bg-gradient-to-r from-background via-primary/10 to-background mt-10">
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+          <div className="grid gap-8 md:grid-cols-3">
+            {/* Brand + description */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                {branding.logo_url ? (
+                  <img src={branding.logo_url} alt={branding.organization_name} className="h-10 w-10 rounded-xl border border-border/60 bg-background/70 object-contain p-1" />
+                ) : (
+                  <span className="grid h-10 w-10 place-items-center rounded-xl border border-border/60 bg-background/70">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </span>
+                )}
+                <span className="font-display text-lg font-bold">{branding.organization_name}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {branding.footer_description || branding.tagline}
+              </p>
+            </div>
+
+            {/* Contact */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Contact</h4>
+              <ul className="space-y-2 text-sm">
+                {branding.address && (
+                  <li className="flex items-start gap-2 text-muted-foreground">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>{branding.address}</span>
+                  </li>
+                )}
+                {branding.contact_email && (
+                  <li className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 shrink-0 text-primary" />
+                    <a href={`mailto:${branding.contact_email}`} className="text-muted-foreground hover:text-primary">{branding.contact_email}</a>
+                  </li>
+                )}
+                {branding.contact_phone && (
+                  <li className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 shrink-0 text-primary" />
+                    <a href={`tel:${branding.contact_phone}`} className="text-muted-foreground hover:text-primary">{branding.contact_phone}</a>
+                  </li>
+                )}
+                {!branding.address && !branding.contact_email && !branding.contact_phone && (
+                  <li className="text-sm text-muted-foreground">
+                    {isAdmin ? "Add contact details from the front-page settings." : "—"}
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {/* Social / links */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Connect</h4>
+              {branding.footer_links.length > 0 ? (
+                <ul className="flex flex-wrap gap-2">
+                  {branding.footer_links.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.url || "#"}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
+                      >
+                        {link.label || link.url}
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {isAdmin ? "Add LinkedIn, X, and more from the front-page settings." : "—"}
+                </p>
+              )}
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={() => { setBrandingDraft(branding); setBrandingOpen(true); }}>
+                  <Settings className="mr-2 h-4 w-4" /> Edit footer details
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-border/50 pt-5">
+            <p className="text-center text-sm md:text-base font-display font-extrabold tracking-wide">
+              <span className="text-foreground/80">© {new Date().getFullYear()} All copyrights reserved by</span>{" "}
+              <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_1px_8px_rgba(251,191,36,0.45)]">
+                Analytical Visionary
+              </span>{" "}
+              <span className="text-foreground/80">with lots of love</span>
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );

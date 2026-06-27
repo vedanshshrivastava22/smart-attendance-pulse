@@ -16,7 +16,12 @@ export type Database = {
     Tables: {
       app_branding: {
         Row: {
+          address: string | null
+          contact_email: string | null
+          contact_phone: string | null
           created_at: string
+          footer_description: string | null
+          footer_links: Json
           id: string
           logo_url: string | null
           organization_name: string
@@ -25,7 +30,12 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
+          footer_description?: string | null
+          footer_links?: Json
           id?: string
           logo_url?: string | null
           organization_name?: string
@@ -34,7 +44,12 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
+          footer_description?: string | null
+          footer_links?: Json
           id?: string
           logo_url?: string | null
           organization_name?: string
