@@ -120,6 +120,20 @@ const normalizeFooterLinks = (raw: unknown): FooterLink[] => {
     .filter((l) => l.label || l.url);
 };
 
+const brandingFromRow = (b: AppBranding): typeof defaultBranding => ({
+  id: b.id,
+  organization_name: b.organization_name ?? defaultBranding.organization_name,
+  tagline: b.tagline ?? defaultBranding.tagline,
+  logo_url: b.logo_url ?? "",
+  footer_description: b.footer_description ?? "",
+  address: b.address ?? "",
+  contact_email: b.contact_email ?? "",
+  contact_phone: b.contact_phone ?? "",
+  footer_links: normalizeFooterLinks(b.footer_links),
+});
+
+
+
 const defaultPayslipSettings = {
   organization_name: "Your School",
   address_line: "",
