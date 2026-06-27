@@ -92,11 +92,32 @@ type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 type ResultSubject = { name: string; max: number; obtained: number };
 type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
 
+type FooterLink = { id: string; label: string; url: string };
+
 const defaultBranding = {
   id: "" as string,
   organization_name: "Smart Attendance",
   tagline: "A delightful command center for teachers, admins, and parents.",
   logo_url: "" as string,
+  footer_description: "" as string,
+  address: "" as string,
+  contact_email: "" as string,
+  contact_phone: "" as string,
+  footer_links: [] as FooterLink[],
+};
+
+const normalizeFooterLinks = (raw: unknown): FooterLink[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      const obj = (item ?? {}) as Record<string, unknown>;
+      return {
+        id: typeof obj.id === "string" && obj.id ? obj.id : `link-${index}-${Date.now()}`,
+        label: typeof obj.label === "string" ? obj.label : "",
+        url: typeof obj.url === "string" ? obj.url : "",
+      };
+    })
+    .filter((l) => l.label || l.url);
 };
 
 const defaultPayslipSettings = {
