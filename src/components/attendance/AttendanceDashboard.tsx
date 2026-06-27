@@ -622,13 +622,7 @@ export const AttendanceDashboard = () => {
       });
     }
     if (brandingRes.data) {
-      const b = brandingRes.data as AppBranding;
-      const next = {
-        id: b.id,
-        organization_name: b.organization_name ?? defaultBranding.organization_name,
-        tagline: b.tagline ?? defaultBranding.tagline,
-        logo_url: b.logo_url ?? "",
-      };
+      const next = brandingFromRow(brandingRes.data as AppBranding);
       setBranding(next);
       setBrandingDraft(next);
     }
