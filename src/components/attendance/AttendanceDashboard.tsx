@@ -3184,9 +3184,9 @@ export const AttendanceDashboard = () => {
 
 
         <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Front-page branding</DialogTitle>
+              <DialogTitle>Front-page & footer details</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1.5">
@@ -3207,7 +3207,79 @@ export const AttendanceDashboard = () => {
                   </div>
                 )}
               </div>
+
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-3">
+                <p className="text-sm font-semibold">Footer details</p>
+                <div className="space-y-1.5">
+                  <Label>Footer description</Label>
+                  <Textarea rows={2} placeholder="A short line about your institution" value={brandingDraft.footer_description} onChange={(e) => setBrandingDraft({ ...brandingDraft, footer_description: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Address</Label>
+                  <Textarea rows={2} placeholder="Company / school address" value={brandingDraft.address} onChange={(e) => setBrandingDraft({ ...brandingDraft, address: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Contact email</Label>
+                    <Input type="email" placeholder="hello@school.com" value={brandingDraft.contact_email} onChange={(e) => setBrandingDraft({ ...brandingDraft, contact_email: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Contact phone</Label>
+                    <Input placeholder="+91 98765 43210" value={brandingDraft.contact_phone} onChange={(e) => setBrandingDraft({ ...brandingDraft, contact_phone: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Social & links</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBrandingDraft({ ...brandingDraft, footer_links: [...brandingDraft.footer_links, { id: `link-${Date.now()}`, label: "", url: "" }] })}
+                    >
+                      <Plus className="mr-1 h-4 w-4" /> Add link
+                    </Button>
+                  </div>
+                  {brandingDraft.footer_links.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Add LinkedIn, X, Instagram, website, etc.</p>
+                  )}
+                  {brandingDraft.footer_links.map((link, idx) => (
+                    <div key={link.id} className="flex items-center gap-2">
+                      <Input
+                        className="w-28 shrink-0"
+                        placeholder="LinkedIn"
+                        value={link.label}
+                        onChange={(e) => {
+                          const next = [...brandingDraft.footer_links];
+                          next[idx] = { ...next[idx], label: e.target.value };
+                          setBrandingDraft({ ...brandingDraft, footer_links: next });
+                        }}
+                      />
+                      <Input
+                        placeholder="https://..."
+                        value={link.url}
+                        onChange={(e) => {
+                          const next = [...brandingDraft.footer_links];
+                          next[idx] = { ...next[idx], url: e.target.value };
+                          setBrandingDraft({ ...brandingDraft, footer_links: next });
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-destructive"
+                        onClick={() => setBrandingDraft({ ...brandingDraft, footer_links: brandingDraft.footer_links.filter((_, i) => i !== idx) })}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setBrandingOpen(false)}>Cancel</Button>
               <Button onClick={saveBranding} disabled={savingBranding}>{savingBranding ? "Saving..." : "Save & publish"}</Button>
