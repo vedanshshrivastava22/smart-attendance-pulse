@@ -297,6 +297,7 @@ const deriveDailySummary = (rows: AttendanceRecord[]): DailySummary =>
   );
 
 const parseWorkbookRows = async (file: File) => {
+  const XLSX = await loadXLSX();
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheetNames = workbook.SheetNames.length ? workbook.SheetNames : ["Sheet1"];
