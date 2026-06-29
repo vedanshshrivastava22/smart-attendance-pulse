@@ -1521,7 +1521,8 @@ export const AttendanceDashboard = () => {
     }
   };
 
-  const buildPayslipDoc = (item: SalaryPayroll) => {
+  const buildPayslipDoc = async (item: SalaryPayroll) => {
+    const { jsPDF, autoTable } = await loadPdf();
     const staffName = item.profiles?.full_name || "Staff member";
     const s = payslipSettings;
     const doc = new jsPDF();
