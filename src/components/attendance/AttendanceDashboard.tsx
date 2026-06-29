@@ -1654,8 +1654,8 @@ export const AttendanceDashboard = () => {
     toast({ title: "Payslip ready", description: "PDF downloaded — attach it inside WhatsApp to send to the staff member." });
   };
 
-  const sharePayslipEmail = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const sharePayslipEmail = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
     const email = window.prompt(`Enter email address to send the payslip to ${item.profiles?.full_name || "staff member"}:`, "");
     if (!email) return;
