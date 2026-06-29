@@ -29,14 +29,28 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { format } from "date-fns";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import type jsPDFType from "jspdf";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
-import * as XLSX from "xlsx";
 import { AnimatedBackground, Reveal, ScrollProgress } from "./MotionGraphics";
+
+// Heavy libs (jsPDF, jspdf-autotable, xlsx) are loaded on demand so they don't
+// bloat the initial bundle and delay first paint.
+let xlsxRef: typeof import("xlsx") | null = null;
+const loadXLSX = async () => {
+  if (!xlsxRef) xlsxRef = await import("xlsx");
+  return xlsxRef;
+};
+
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  return { jsPDF, autoTable };
+};
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
