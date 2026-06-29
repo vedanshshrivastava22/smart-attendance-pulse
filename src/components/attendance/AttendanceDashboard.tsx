@@ -1941,7 +1941,8 @@ export const AttendanceDashboard = () => {
     setExamResults((prev) => prev.filter((x) => x.id !== r.id));
   };
 
-  const buildMarksheetDoc = (r: ExamResult) => {
+  const buildMarksheetDoc = async (r: ExamResult) => {
+    const { jsPDF, autoTable } = await loadPdf();
     const student = students.find((s) => s.id === r.student_id);
     const studentName = student?.full_name || "Student";
     const rollNo = student?.roll_number || "";
