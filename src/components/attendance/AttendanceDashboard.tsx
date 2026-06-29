@@ -2011,13 +2011,13 @@ export const AttendanceDashboard = () => {
     return { doc, fileName, student };
   };
 
-  const downloadMarksheet = (r: ExamResult) => {
-    const { doc, fileName } = buildMarksheetDoc(r);
+  const downloadMarksheet = async (r: ExamResult) => {
+    const { doc, fileName } = await buildMarksheetDoc(r);
     doc.save(fileName);
   };
 
-  const shareMarksheetWhatsApp = (r: ExamResult) => {
-    const { doc, fileName, student } = buildMarksheetDoc(r);
+  const shareMarksheetWhatsApp = async (r: ExamResult) => {
+    const { doc, fileName, student } = await buildMarksheetDoc(r);
     doc.save(fileName);
     if (!student) return;
     const phoneRaw = (student.whatsapp_phone || student.parent_phone || "").replace(/\D/g, "");
