@@ -1641,8 +1641,8 @@ export const AttendanceDashboard = () => {
     ].join("\n");
   };
 
-  const sharePayslipWhatsApp = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const sharePayslipWhatsApp = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
     const phoneRaw = (item.profiles?.phone || "").replace(/[^\d]/g, "");
     if (!phoneRaw) {
