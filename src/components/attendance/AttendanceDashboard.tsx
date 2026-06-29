@@ -29,14 +29,28 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { format } from "date-fns";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import type jsPDFType from "jspdf";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Settings } from "lucide-react";
 import { motion } from "framer-motion";
-import * as XLSX from "xlsx";
 import { AnimatedBackground, Reveal, ScrollProgress } from "./MotionGraphics";
+
+// Heavy libs (jsPDF, jspdf-autotable, xlsx) are loaded on demand so they don't
+// bloat the initial bundle and delay first paint.
+let xlsxRef: typeof import("xlsx") | null = null;
+const loadXLSX = async () => {
+  if (!xlsxRef) xlsxRef = await import("xlsx");
+  return xlsxRef;
+};
+
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  return { jsPDF, autoTable };
+};
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
@@ -94,7 +108,7 @@ type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
 type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 
 type ResultSubject = { name: string; max: number; obtained: number };
-type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
+type AutoTableDocument = jsPDFType & { lastAutoTable?: { finalY: number } };
 
 type FooterLink = { id: string; label: string; url: string };
 
@@ -261,8 +275,8 @@ const toAttendanceStatus = (value: unknown): AttendanceStatus => {
 
 const formatDateInput = (value: unknown, fallback: string) => {
   if (!value) return fallback;
-  if (typeof value === "number") {
-    const parsed = XLSX.SSF.parse_date_code(value);
+  if (typeof value === "number" && xlsxRef) {
+    const parsed = xlsxRef.SSF.parse_date_code(value);
     if (parsed) {
       return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
     }
@@ -283,6 +297,7 @@ const deriveDailySummary = (rows: AttendanceRecord[]): DailySummary =>
   );
 
 const parseWorkbookRows = async (file: File) => {
+  const XLSX = await loadXLSX();
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheetNames = workbook.SheetNames.length ? workbook.SheetNames : ["Sheet1"];
@@ -1293,6 +1308,7 @@ export const AttendanceDashboard = () => {
         };
       });
 
+      const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
 
       // Summary sheet
@@ -1505,7 +1521,8 @@ export const AttendanceDashboard = () => {
     }
   };
 
-  const buildPayslipDoc = (item: SalaryPayroll) => {
+  const buildPayslipDoc = async (item: SalaryPayroll) => {
+    const { jsPDF, autoTable } = await loadPdf();
     const staffName = item.profiles?.full_name || "Staff member";
     const s = payslipSettings;
     const doc = new jsPDF();
@@ -1603,8 +1620,8 @@ export const AttendanceDashboard = () => {
     return { doc, fileName, staffName };
   };
 
-  const downloadPayslip = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const downloadPayslip = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
   };
 
@@ -1624,8 +1641,8 @@ export const AttendanceDashboard = () => {
     ].join("\n");
   };
 
-  const sharePayslipWhatsApp = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const sharePayslipWhatsApp = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
     const phoneRaw = (item.profiles?.phone || "").replace(/[^\d]/g, "");
     if (!phoneRaw) {
@@ -1637,8 +1654,8 @@ export const AttendanceDashboard = () => {
     toast({ title: "Payslip ready", description: "PDF downloaded — attach it inside WhatsApp to send to the staff member." });
   };
 
-  const sharePayslipEmail = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const sharePayslipEmail = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
     const email = window.prompt(`Enter email address to send the payslip to ${item.profiles?.full_name || "staff member"}:`, "");
     if (!email) return;
@@ -1924,7 +1941,8 @@ export const AttendanceDashboard = () => {
     setExamResults((prev) => prev.filter((x) => x.id !== r.id));
   };
 
-  const buildMarksheetDoc = (r: ExamResult) => {
+  const buildMarksheetDoc = async (r: ExamResult) => {
+    const { jsPDF, autoTable } = await loadPdf();
     const student = students.find((s) => s.id === r.student_id);
     const studentName = student?.full_name || "Student";
     const rollNo = student?.roll_number || "";
@@ -1993,13 +2011,13 @@ export const AttendanceDashboard = () => {
     return { doc, fileName, student };
   };
 
-  const downloadMarksheet = (r: ExamResult) => {
-    const { doc, fileName } = buildMarksheetDoc(r);
+  const downloadMarksheet = async (r: ExamResult) => {
+    const { doc, fileName } = await buildMarksheetDoc(r);
     doc.save(fileName);
   };
 
-  const shareMarksheetWhatsApp = (r: ExamResult) => {
-    const { doc, fileName, student } = buildMarksheetDoc(r);
+  const shareMarksheetWhatsApp = async (r: ExamResult) => {
+    const { doc, fileName, student } = await buildMarksheetDoc(r);
     doc.save(fileName);
     if (!student) return;
     const phoneRaw = (student.whatsapp_phone || student.parent_phone || "").replace(/\D/g, "");
