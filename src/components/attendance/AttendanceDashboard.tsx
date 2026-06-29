@@ -108,7 +108,7 @@ type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
 type ExamResult = Database["public"]["Tables"]["exam_results"]["Row"];
 
 type ResultSubject = { name: string; max: number; obtained: number };
-type AutoTableDocument = jsPDF & { lastAutoTable?: { finalY: number } };
+type AutoTableDocument = jsPDFType & { lastAutoTable?: { finalY: number } };
 
 type FooterLink = { id: string; label: string; url: string };
 
