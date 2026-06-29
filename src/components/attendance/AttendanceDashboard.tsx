@@ -1308,6 +1308,7 @@ export const AttendanceDashboard = () => {
         };
       });
 
+      const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
 
       // Summary sheet
