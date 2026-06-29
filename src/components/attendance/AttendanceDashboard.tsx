@@ -1620,8 +1620,8 @@ export const AttendanceDashboard = () => {
     return { doc, fileName, staffName };
   };
 
-  const downloadPayslip = (item: SalaryPayroll) => {
-    const { doc, fileName } = buildPayslipDoc(item);
+  const downloadPayslip = async (item: SalaryPayroll) => {
+    const { doc, fileName } = await buildPayslipDoc(item);
     doc.save(fileName);
   };
 
